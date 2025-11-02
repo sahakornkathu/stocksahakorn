@@ -62,8 +62,21 @@
       </div>
     </div>
 
-    <!-- 🔹 รายละเอียดคำสั่งซื้อ -->
-    <div id="detailArea" class="hidden bg-white p-4 rounded-xl shadow"></div>
+    <!-- 🔹 ตารางประวัติการซื้อเดือนนี้ -->
+    <div id="historyArea" class="hidden bg-white p-4 rounded-xl shadow mt-6">
+      <h3 class="font-semibold mb-3">📜 ประวัติการซื้อเดือนนี้</h3>
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-gray-100 text-gray-700">
+            <th class="border p-2">วันที่</th>
+            <th class="border p-2">จำนวนหุ้น</th>
+            <th class="border p-2">ยอดเงิน</th>
+            <th class="border p-2">สถานะ</th>
+          </tr>
+        </thead>
+        <tbody id="historyTable"></tbody>
+      </table>
+    </div>
   </div>
 
 <script>
@@ -90,6 +103,7 @@ async function init() {
   document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
   await loadMember(profile.userId);
   await checkMonthlyTotal();
+  await loadHistory();
 }
 init();
 
@@ -100,6 +114,7 @@ async function loadMember(userId) {
 
   document.getElementById("memberInfo").classList.remove("hidden");
   document.getElementById("buyArea").classList.remove("hidden");
+  document.getElementById("historyArea").classList.remove("hidden");
   document.getElementById("memberName").innerText = `${member.first_name} ${member.last_name}`;
   document.getElementById("memberNo").innerText = member.member_no;
   document.getElementById("memberGroup").innerText = member.group_name;
@@ -125,6 +140,47 @@ async function checkMonthlyTotal() {
   if (error) return console.log(error);
   totalThisMonth = data.reduce((sum, t) => sum + Number(t.amount), 0);
   document.getElementById("monthlyInfo").innerText = `ยอดซื้อเดือนนี้: ${totalThisMonth.toLocaleString()} / 20,000 บาท`;
+}
+
+/* ================= HISTORY ================= */
+async function loadHistory() {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("created_at, shares, amount, status")
+    .eq("line_user_id", profile.userId)
+    .gte("created_at", startOfMonth)
+    .lte("created_at", endOfMonth)
+    .order("created_at", { ascending: false });
+
+  if (error) return console.log(error);
+
+  const table = document.getElementById("historyTable");
+  table.innerHTML = "";
+  if (data.length === 0) {
+    table.innerHTML = `<tr><td colspan="4" class="text-center p-3 text-gray-500">ยังไม่มีรายการในเดือนนี้</td></tr>`;
+    return;
+  }
+
+  data.forEach(tx => {
+    const d = new Date(tx.created_at);
+    const dateStr = d.toLocaleDateString("th-TH", { day: "2-digit", month: "short" });
+    const statusText = tx.status === "approved"
+      ? "✅ อนุมัติ"
+      : tx.status === "pending"
+      ? "⌛ รอตรวจสอบ"
+      : "❌ ยกเลิก";
+    table.innerHTML += `
+      <tr class="border-t">
+        <td class="p-2 text-center">${dateStr}</td>
+        <td class="p-2 text-center">${tx.shares}</td>
+        <td class="p-2 text-center">${tx.amount.toLocaleString()}</td>
+        <td class="p-2 text-center">${statusText}</td>
+      </tr>`;
+  });
 }
 
 /* ================= SELECT SHARES ================= */
@@ -170,6 +226,7 @@ document.getElementById("checkoutBtn").onclick = async () => {
   document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
   document.getElementById("qrImg").src = qrUrl;
   document.getElementById("checkoutArea").classList.remove("hidden");
+  await loadHistory();
 };
 
 /* ================= UPLOAD SLIP ================= */
