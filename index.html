@@ -5,39 +5,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
-  <!-- Supabase / LIFF / SweetAlert / Tailwind -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-
-  <style>
-    body { font-family: 'Prompt', sans-serif; background: #f9fafb; }
-    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-  </style>
 </head>
 
-<body class="min-h-screen text-gray-800">
-  <div class="max-w-lg mx-auto p-4">
+<body class="bg-gray-50 min-h-screen text-gray-800">
+  <div id="app" class="max-w-lg mx-auto p-4">
     <h1 class="text-2xl font-bold text-center mb-4">🪙 ระบบซื้อหุ้นสหกรณ์</h1>
     <p id="status" class="text-center text-gray-500 mb-4">กำลังเชื่อมต่อ...</p>
 
-    <!-- ข้อมูลสมาชิก -->
-    <div id="memberInfo" class="hidden card mb-4">
+    <!-- 🔹 ข้อมูลสมาชิก -->
+    <div id="memberInfo" class="hidden bg-white p-4 rounded-xl shadow mb-4">
       <p><b>ชื่อ:</b> <span id="memberName"></span></p>
       <p><b>เลขสมาชิก:</b> <span id="memberNo"></span></p>
       <p><b>กลุ่ม:</b> <span id="memberGroup"></span></p>
-      <hr class="my-2">
       <p><b>ยอดยกมา:</b> <span id="carryForward"></span> บาท</p>
       <p><b>ยอดซื้อปีนี้:</b> <span id="purchaseYear"></span> บาท</p>
       <p><b>ยอดสะสมรวม:</b> <span id="totalAmount"></span> บาท</p>
+
+      <!-- ✅ เพิ่มยอดสะสมเดือนนี้ -->
       <hr class="my-2">
       <p class="text-blue-700"><b>ยอดซื้อเดือนนี้:</b> <span id="monthlyAmount">0</span> บาท</p>
       <p class="text-green-700"><b>เหลือสิทธิ์ซื้อได้อีก:</b> <span id="remainingAmount">0</span> บาท</p>
     </div>
 
-    <!-- ซื้อหุ้น -->
-    <div id="buyArea" class="hidden card">
+    <!-- 🔹 โซนซื้อหุ้น -->
+    <div id="buyArea" class="hidden bg-white p-4 rounded-xl shadow">
       <h2 class="font-semibold mb-3">🛒 ซื้อหุ้น</h2>
       <div class="grid grid-cols-2 gap-3 mb-4" id="productGrid"></div>
       <div class="flex justify-between items-center">
@@ -50,8 +45,8 @@
       <button id="clearBtn" class="bg-gray-300 text-gray-800 w-full mt-3 py-2 rounded">🧹 ล้างตะกร้า</button>
     </div>
 
-    <!-- ชำระเงิน -->
-    <div id="checkoutArea" class="hidden card mt-4">
+    <!-- 🔹 โซนชำระเงิน -->
+    <div id="checkoutArea" class="hidden bg-white p-4 rounded-xl shadow mt-4">
       <h3 class="font-semibold mb-2">📄 ใบแจ้งการชำระ</h3>
       <p id="txSummary" class="text-gray-600 mb-3"></p>
       <img id="qrImg" class="mx-auto mb-3 w-64 rounded-lg" alt="QR PromptPay" />
@@ -59,12 +54,6 @@
       <input id="slipFile" type="file" accept="image/*" class="w-full border rounded p-1 mb-3" />
       <button id="uploadSlipBtn" class="bg-blue-600 text-white w-full py-2 rounded">📤 ส่งหลักฐาน</button>
       <p id="uploadMsg" class="text-sm text-center mt-2"></p>
-    </div>
-
-    <!-- ประวัติการซื้อ -->
-    <div id="historyArea" class="hidden card mt-4">
-      <h3 class="font-semibold mb-2">📜 ประวัติการซื้อหุ้น</h3>
-      <div id="historyList" class="space-y-2"></div>
     </div>
   </div>
 
@@ -74,59 +63,63 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const LIFF_ID = "1660910795-4w2rdGn6";
 const PROMPTPAY_NO = "0936494961";
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
-const MAX_MONTHLY_LIMIT = 20000;
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let profile = null, member = null;
-let monthlyAmount = 0, remaining = MAX_MONTHLY_LIMIT;
+let profile = null;
 let cart = { shares: 0, amount: 0 };
 let currentTxId = null;
+let monthlyAmount = 0;
+let remaining = 0;
 
 /* ================= INIT ================= */
 async function init() {
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) return liff.login();
+
   profile = await liff.getProfile();
   document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
   loadMember(profile.userId);
 }
 init();
 
-/* ================= MEMBER INFO ================= */
+/* ================= MEMBER ================= */
 async function loadMember(userId) {
-  const { data, error } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
-  if (error || !data) {
+  const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
+  if (!member) {
     document.getElementById("status").innerText = "❌ ไม่พบข้อมูลสมาชิกในระบบ";
     return;
   }
 
-  member = data;
   document.getElementById("memberInfo").classList.remove("hidden");
   document.getElementById("buyArea").classList.remove("hidden");
-
-  document.getElementById("memberName").innerText = `${data.first_name} ${data.last_name}`;
-  document.getElementById("memberNo").innerText = data.member_no;
-  document.getElementById("memberGroup").innerText = data.group_name;
-  document.getElementById("carryForward").innerText = data.carry_forward.toLocaleString();
-  document.getElementById("purchaseYear").innerText = data.purchase_year.toLocaleString();
-  document.getElementById("totalAmount").innerText = data.total_amount.toLocaleString();
+  document.getElementById("memberName").innerText = `${member.first_name} ${member.last_name}`;
+  document.getElementById("memberNo").innerText = member.member_no;
+  document.getElementById("memberGroup").innerText = member.group_name;
+  document.getElementById("carryForward").innerText = (member.carry_forward ?? 0).toLocaleString();
+  document.getElementById("purchaseYear").innerText = (member.purchase_year ?? 0).toLocaleString();
+  document.getElementById("totalAmount").innerText = (member.total_amount ?? 0).toLocaleString();
 
   await updateMonthlyStats(userId);
-  await loadHistory(userId);
 }
 
-/* ================= MONTHLY STATS ================= */
+/* ================= ยอดซื้อเดือนนี้ / เหลือสิทธิ์ ================= */
 async function updateMonthlyStats(userId) {
+  const MAX_MONTHLY_LIMIT = 20000;
   const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
   const end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("transactions")
     .select("amount")
     .eq("line_user_id", userId)
     .eq("status", "approved")
     .gte("approved_at", start)
     .lte("approved_at", end);
+
+  if (error) {
+    console.error("❌ updateMonthlyStats error:", error.message);
+    return;
+  }
 
   monthlyAmount = data?.reduce((sum, t) => sum + Number(t.amount || 0), 0) || 0;
   remaining = Math.max(0, MAX_MONTHLY_LIMIT - monthlyAmount);
@@ -135,46 +128,10 @@ async function updateMonthlyStats(userId) {
   document.getElementById("remainingAmount").innerText = remaining.toLocaleString();
 }
 
-/* ================= HISTORY ================= */
-async function loadHistory(userId) {
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("line_user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  const list = document.getElementById("historyList");
-  const area = document.getElementById("historyArea");
-  list.innerHTML = "";
-
-  if (error || !data?.length) {
-    list.innerHTML = `<p class="text-gray-400 text-center">ไม่มีประวัติการซื้อ</p>`;
-    area.classList.remove("hidden");
-    return;
-  }
-
-  data.forEach(tx => {
-    const div = document.createElement("div");
-    div.className = "border rounded p-2 text-sm";
-    const color = tx.status === "approved" ? "text-green-600" :
-                  tx.status === "rejected" ? "text-red-600" :
-                  "text-yellow-600";
-    div.innerHTML = `
-      <p><b>วันที่:</b> ${new Date(tx.created_at).toLocaleString("th-TH")}</p>
-      <p><b>หุ้น:</b> ${tx.shares} หน่วย</p>
-      <p><b>ยอด:</b> ${Number(tx.amount).toLocaleString()} บาท</p>
-      <p class="${color}"><b>สถานะ:</b> ${tx.status}</p>
-    `;
-    list.appendChild(div);
-  });
-  area.classList.remove("hidden");
-}
-
-/* ================= PRODUCTS ================= */
+/* ================= PRODUCT ================= */
 const SHARE_PRICE = 10;
 const productGrid = document.getElementById("productGrid");
-[10, 50, 100, 500, 1000].forEach((s) => {
+[10, 50, 100, 500, 1000].forEach(s => {
   const div = document.createElement("div");
   div.className = "border p-3 rounded-xl text-center hover:bg-green-50 cursor-pointer";
   div.innerHTML = `<p class="font-semibold">${s} หน่วย</p><p class="text-sm text-gray-500">${(s * SHARE_PRICE).toLocaleString()} บาท</p>`;
@@ -198,8 +155,10 @@ document.getElementById("clearBtn").onclick = () => {
 
 /* ================= CHECKOUT ================= */
 document.getElementById("checkoutBtn").onclick = async () => {
-  if (cart.amount < 100) return Swal.fire("แจ้งเตือน", "ขั้นต่ำ 100 บาท", "warning");
-  if (monthlyAmount + cart.amount > MAX_MONTHLY_LIMIT)
+  if (cart.amount < 100)
+    return Swal.fire("แจ้งเตือน", "ขั้นต่ำ 100 บาท", "warning");
+
+  if (monthlyAmount + cart.amount > 20000)
     return Swal.fire("เกินวงเงิน", "คุณซื้อหุ้นเกิน 20,000 บาทในเดือนนี้แล้ว", "error");
 
   const { data, error } = await supabase.from("transactions").insert([{
@@ -207,7 +166,7 @@ document.getElementById("checkoutBtn").onclick = async () => {
     line_display_name: profile.displayName,
     shares: cart.shares,
     amount: cart.amount,
-    status: "pending",
+    status: "pending"
   }]).select().single();
 
   if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
@@ -245,8 +204,8 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
       amount: cart.amount,
       proofUrl: publicUrl.publicUrl,
       memberName: profile.displayName,
-      mode: "slip_uploaded",
-    }),
+      mode: "slip_uploaded"
+    })
   });
 };
 </script>
