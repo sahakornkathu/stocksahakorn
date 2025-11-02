@@ -62,7 +62,7 @@
       </div>
     </div>
 
-    <!-- 🔹 ตารางประวัติการซื้อเดือนนี้ -->
+    <!-- 🔹 ประวัติการซื้อ -->
     <div id="historyArea" class="hidden bg-white p-4 rounded-xl shadow mt-6">
       <h3 class="font-semibold mb-3">📜 ประวัติการซื้อเดือนนี้</h3>
       <table class="w-full text-sm border-collapse">
@@ -94,6 +94,7 @@ let cart = { shares: 0, amount: 0 };
 let currentTxId = null;
 let lastOrder = { shares: 0, amount: 0 };
 let totalThisMonth = 0;
+let locked = false; // ✅ เพิ่ม flag ป้องกันการกดซ้ำ
 
 /* ================= INIT ================= */
 async function init() {
@@ -192,7 +193,10 @@ const productGrid = document.getElementById("productGrid");
   const div = document.createElement("div");
   div.className = "border p-3 rounded-xl text-center hover:shadow cursor-pointer";
   div.innerHTML = `<p class="font-semibold">${s} หน่วย</p><p class="text-sm text-gray-500">${(s * SHARE_PRICE).toLocaleString()} บาท</p>`;
-  div.onclick = () => addShare(s);
+  div.onclick = () => {
+    if (!locked) addShare(s);
+    else alert("🚫 ไม่สามารถเพิ่มจำนวนหุ้นหลังจากกดชำระเงินแล้ว");
+  };
   productGrid.appendChild(div);
 });
 function addShare(count) {
@@ -204,11 +208,17 @@ function addShare(count) {
 
 /* ================= CHECKOUT ================= */
 document.getElementById("checkoutBtn").onclick = async () => {
+  if (locked) return alert("🚫 คุณได้กดชำระเงินแล้ว ไม่สามารถแก้ไขได้");
   if (cart.amount < MIN_TOTAL) return alert(`ขั้นต่ำ ${MIN_TOTAL} บาท`);
   const projectedTotal = totalThisMonth + cart.amount;
   if (projectedTotal > MAX_TOTAL) {
     return alert(`❌ คุณซื้อหุ้นครบ ${totalThisMonth.toLocaleString()} บาทแล้วในเดือนนี้\nสามารถซื้อได้ไม่เกิน ${MAX_TOTAL.toLocaleString()} บาทต่อเดือน`);
   }
+
+  locked = true; // ✅ ล็อกการซื้อ
+  document.getElementById("checkoutBtn").disabled = true;
+  document.getElementById("checkoutBtn").innerText = "รอการชำระ...";
+  document.getElementById("checkoutBtn").classList.replace("bg-green-600", "bg-gray-400");
 
   const { data, error } = await supabase.from("transactions").insert([{
     line_user_id: profile.userId,
