@@ -18,7 +18,7 @@
     <h1 class="text-2xl font-bold text-center mb-4">🪙 ระบบซื้อหุ้นสหกรณ์</h1>
     <p id="status" class="text-center text-gray-500 mb-4">กำลังเชื่อมต่อ...</p>
 
-    <!-- 🔹 โซนข้อมูลสมาชิก -->
+    <!-- 🔹 ข้อมูลสมาชิก -->
     <div id="memberInfo" class="hidden bg-white p-4 rounded-xl shadow mb-4">
       <p><b>ชื่อ:</b> <span id="memberName"></span></p>
       <p><b>เลขสมาชิก:</b> <span id="memberNo"></span></p>
@@ -28,7 +28,7 @@
       <p><b>ยอดสะสมรวม:</b> <span id="totalAmount"></span> บาท</p>
     </div>
 
-    <!-- 🔹 โซนเลือกซื้อหุ้น -->
+    <!-- 🔹 โซนเลือกซื้อ -->
     <div id="buyArea" class="hidden bg-white p-4 rounded-xl shadow">
       <h2 class="font-semibold mb-3">🛒 ซื้อหุ้น</h2>
       <div class="grid grid-cols-2 gap-3 mb-4" id="productGrid"></div>
@@ -41,7 +41,7 @@
       </div>
     </div>
 
-    <!-- 🔹 โซนชำระเงิน -->
+    <!-- 🔹 ชำระเงิน -->
     <div id="checkoutArea" class="hidden bg-white p-4 rounded-xl shadow mt-4">
       <h3 class="font-semibold mb-2">📄 ใบแจ้งการชำระ</h3>
       <p id="txSummary" class="text-gray-600 mb-3"></p>
@@ -169,15 +169,15 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
 
   document.getElementById("uploadMsg").innerText = "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบ";
 
+  // ✅ ส่ง Flex Message พร้อมรูปสลิปจริง
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       userId: profile.userId,
-      shares: lastOrder.shares,
-      amount: lastOrder.amount,
-      txId: currentTxId,
       memberName: profile.displayName,
+      amount: lastOrder.amount,
+      proofUrl: publicUrl.publicUrl, // ✅ สำคัญมาก
       mode: "slip_uploaded"
     })
   });
