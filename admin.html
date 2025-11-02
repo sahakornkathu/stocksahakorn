@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
+  <!-- ✅ Libraries -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -36,8 +37,9 @@
 
 <body class="min-h-screen flex flex-col items-center justify-center" data-theme="light">
   <div class="w-full max-w-md p-4 space-y-4">
-    <h1 class="text-2xl font-bold text-center text-green-600">🛒 ระบบซื้อหุ้นสหกรณ์</h1>
+    <h1 class="text-2xl font-bold text-center text-green-600">🪙 ระบบซื้อหุ้นสหกรณ์</h1>
 
+    <!-- 🔹 Member Info -->
     <div id="memberInfo" class="card text-center">
       <p class="font-semibold text-lg" id="memberName">กำลังโหลดข้อมูล...</p>
       <p>ยอดยกมา: <span id="carryForward">0</span> บาท</p>
@@ -45,6 +47,7 @@
       <p class="text-lg font-bold text-green-600">ยอดสะสมรวม: <span id="totalAmount">0</span> บาท</p>
     </div>
 
+    <!-- 🔹 Buy Area -->
     <div class="card space-y-3">
       <label class="block font-semibold">💰 จำนวนเงินที่ต้องการซื้อ</label>
       <input type="number" id="amount" placeholder="ระบุจำนวนเงิน" class="w-full border rounded px-3 py-2 text-center" min="100" step="100">
@@ -55,8 +58,9 @@
       </div>
     </div>
 
+    <!-- 🔹 Proof Upload -->
     <div class="card text-center">
-      <p class="text-sm text-gray-500">อัปโหลดสลิปโอนเงิน</p>
+      <p class="text-sm text-gray-500">📷 อัปโหลดสลิปโอนเงิน</p>
       <input type="file" id="proof" accept="image/*" class="w-full mt-2">
     </div>
 
@@ -78,31 +82,45 @@
     /* ========= INIT ========= */
     async function init() {
       await liff.init({ liffId: "1660910795" });
-      if (!liff.isLoggedIn()) liff.login();
+      if (!liff.isLoggedIn()) return liff.login();
 
       userProfile = await liff.getProfile();
-      loadMember();
+      setTimeout(loadMember, 500); // รอให้ profile โหลดครบ
     }
 
     /* ========= LOAD MEMBER ========= */
     async function loadMember() {
+      if (!userProfile || !userProfile.userId) return;
+
       const { data, error } = await supabase
         .from("members")
         .select("*")
         .eq("line_user_id", userProfile.userId)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
-        console.error("Load error:", error);
-        Swal.fire("ผิดพลาด", "ไม่พบข้อมูลสมาชิก", "error");
+      if (error) {
+        Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+        return;
+      }
+
+      if (!data) {
+        Swal.fire("ไม่พบข้อมูลสมาชิก", "กรุณาติดต่อเจ้าหน้าที่สหกรณ์", "warning");
+        document.getElementById("memberName").innerText = "ไม่พบข้อมูลสมาชิก";
+        ["carryForward", "purchaseYear", "totalAmount"].forEach(id => {
+          document.getElementById(id).innerText = "0";
+        });
         return;
       }
 
       const member = data;
+      const carry = member.carry_forward ?? 0;
+      const purchase = member.purchase_year ?? 0;
+      const total = member.total_amount ?? (carry + purchase);
+
       document.getElementById("memberName").innerText = `${member.first_name || ''} ${member.last_name || ''}`;
-      document.getElementById("carryForward").innerText = (member.carry_forward ?? 0).toLocaleString();
-      document.getElementById("purchaseYear").innerText = (member.purchase_year ?? 0).toLocaleString();
-      document.getElementById("totalAmount").innerText = (member.total_amount ?? 0).toLocaleString();
+      document.getElementById("carryForward").innerText = carry.toLocaleString();
+      document.getElementById("purchaseYear").innerText = purchase.toLocaleString();
+      document.getElementById("totalAmount").innerText = total.toLocaleString();
     }
 
     /* ========= SUBMIT ========= */
@@ -110,25 +128,18 @@
       const amount = parseFloat(document.getElementById("amount").value);
       const proof = document.getElementById("proof").files[0];
 
-      if (!amount || amount < 100) {
+      if (!amount || amount < 100)
         return Swal.fire("แจ้งเตือน", "กรุณาระบุจำนวนเงินขั้นต่ำ 100 บาท", "warning");
-      }
-      if (!proof) {
+      if (!proof)
         return Swal.fire("แจ้งเตือน", "กรุณาอัปโหลดสลิปโอนเงิน", "warning");
-      }
 
       Swal.fire({ title: "กำลังอัปโหลด...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
       const proofPath = `${userProfile.userId}/${Date.now()}_${proof.name}`;
-      const { data, error } = await supabase.storage.from("proofs").upload(proofPath, proof);
-
-      if (error) {
-        Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
-        return;
-      }
+      const { error: uploadError } = await supabase.storage.from("proofs").upload(proofPath, proof);
+      if (uploadError) return Swal.fire("ผิดพลาด", uploadError.message, "error");
 
       const proofUrl = `${SUPABASE_URL}/storage/v1/object/public/proofs/${proofPath}`;
-
       await supabase.from("transactions").insert([{
         line_user_id: userProfile.userId,
         line_display_name: userProfile.displayName,
@@ -161,7 +172,7 @@
       Swal.fire("ล้างข้อมูลแล้ว", "", "info");
     };
 
-    /* ========= TOGGLE THEME ========= */
+    /* ========= THEME ========= */
     document.getElementById("toggleTheme").onclick = () => {
       darkMode = !darkMode;
       document.body.setAttribute("data-theme", darkMode ? "dark" : "light");
