@@ -5,49 +5,98 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ผู้ดูแลระบบ</title>
 
-  <!-- Libraries -->
+  <!-- CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"></script>
 
   <style>
-    body { font-family: 'Prompt', sans-serif; transition: background 0.3s, color 0.3s; background: #f9fafb; }
-    .dark-mode { background: #0f172a; color: #f8fafc; }
-    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); transition: background 0.3s; }
-    .dark-mode .card { background: #1e293b; color: #f1f5f9; }
-    .status { font-weight: 600; }
-    .dark-mode button { color: #fff; }
-    .tab-active { border-bottom: 3px solid #16a34a; color: #16a34a; font-weight: bold; }
-    button { transition: all .2s; }
-    button:hover { transform: scale(1.03); }
+    body {
+      font-family: 'Prompt', sans-serif;
+      background: linear-gradient(180deg, #f0fdf4, #dcfce7);
+      color: #1e293b;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .dark-mode {
+      background: linear-gradient(180deg, #0f172a, #1e293b);
+      color: #f1f5f9;
+    }
+
+    .glass {
+      backdrop-filter: blur(10px);
+      background: rgba(255, 255, 255, 0.75);
+      border-radius: 16px;
+      box-shadow: 0 4px 30px rgba(0,0,0,0.1);
+      transition: all 0.3s;
+    }
+
+    .dark-mode .glass {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .status-badge {
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .status-blue { background: #dbeafe; color: #1e40af; }
+    .status-green { background: #dcfce7; color: #166534; }
+    .status-yellow { background: #fef9c3; color: #854d0e; }
+    .status-red { background: #fee2e2; color: #991b1b; }
+
+    button {
+      transition: all .25s ease;
+    }
+    button:hover {
+      transform: scale(1.05);
+    }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 1.5rem; }
+      .flex-col-sm { flex-direction: column; align-items: flex-start; }
+      .mobile-btns { width: 100%; justify-content: flex-end; }
+    }
   </style>
 </head>
 
-<body class="min-h-screen text-gray-800">
-  <div class="max-w-5xl mx-auto p-6">
+<body class="min-h-screen">
+  <div class="max-w-5xl mx-auto p-5">
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold text-green-700">🛠 ระบบจัดการคำสั่งซื้อหุ้น</h1>
+      <h1 class="text-2xl sm:text-3xl font-bold text-green-700">🛠 ระบบจัดการคำสั่งซื้อหุ้น</h1>
       <button id="toggleMode" class="px-3 py-1 rounded bg-gray-800 text-white text-sm">🌙</button>
     </div>
+
+    <!-- 🔍 Search Bar -->
+    <div class="glass p-3 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <input id="searchInput" type="text" placeholder="🔍 ค้นหาชื่อสมาชิก หรือ กลุ่ม..."
+        class="w-full sm:w-2/3 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-gray-800" />
+      <button id="refreshBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">🔄 รีเฟรช</button>
+    </div>
+
+    <!-- 🧾 รายการธุรกรรม -->
     <div id="txList" class="space-y-4"></div>
   </div>
 
 <script>
 /* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // anon หรือ service_role ก็ได้
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* 🌙 Toggle Mode */
+/* 🌙 Toggle Theme */
 document.getElementById("toggleMode").onclick = () => {
   document.body.classList.toggle("dark-mode");
   document.getElementById("toggleMode").textContent =
     document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
 };
 
-/* ================= LOAD TRANSACTIONS ================= */
-async function loadTransactions() {
+/* ========== โหลดธุรกรรม ========== */
+async function loadTransactions(keyword = "") {
   const { data, error } = await supabase
     .from("transactions")
     .select(`
@@ -61,40 +110,46 @@ async function loadTransactions() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("❌ Load error:", error);
-    return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+    console.error("Load error:", error);
+    return Swal.fire("❌ เกิดข้อผิดพลาด", error.message, "error");
   }
 
   const list = document.getElementById("txList");
   list.innerHTML = "";
 
-  if (!data || data.length === 0) {
+  const filtered = keyword
+    ? data.filter(t =>
+        (t.members?.first_name + " " + t.members?.last_name).toLowerCase().includes(keyword.toLowerCase()) ||
+        (t.members?.group_name || "").toLowerCase().includes(keyword.toLowerCase())
+      )
+    : data;
+
+  if (!filtered || filtered.length === 0) {
     list.innerHTML = `<p class="text-center text-gray-400">ไม่มีข้อมูลคำสั่งซื้อ</p>`;
     return;
   }
 
-  data.forEach(tx => {
-    const div = document.createElement("div");
-    div.className = "card";
+  filtered.forEach(tx => {
+    const statusClass = {
+      pending: "status-yellow",
+      slip_uploaded: "status-blue",
+      approved: "status-green",
+      rejected: "status-red"
+    }[tx.status] || "status-yellow";
 
-    const statusColor = {
-      pending: "text-yellow-600",
-      slip_uploaded: "text-blue-600",
-      approved: "text-green-600",
-      rejected: "text-red-600"
-    }[tx.status] || "text-gray-600";
+    const div = document.createElement("div");
+    div.className = "glass p-4 sm:p-5";
 
     div.innerHTML = `
-      <div class="flex justify-between items-center flex-wrap">
-        <div class="mb-2 sm:mb-0">
+      <div class="flex justify-between items-start flex-col-sm gap-2">
+        <div>
           <p class="font-semibold text-lg">${tx.members?.first_name || ''} ${tx.members?.last_name || ''}</p>
           <p class="text-sm text-gray-500">กลุ่ม: ${tx.members?.group_name || '-'}</p>
-          <p class="text-sm text-gray-500 mt-1">หุ้น: ${tx.shares} หน่วย • ยอด: ${Number(tx.amount).toLocaleString()} บาท</p>
-          <p class="${statusColor} status mt-1">สถานะ: ${tx.status}</p>
+          <p class="text-sm mt-1">หุ้น: <b>${tx.shares}</b> หน่วย • ยอด: <b>${Number(tx.amount).toLocaleString()}</b> บาท</p>
+          <p class="mt-1"><span class="status-badge ${statusClass}">${tx.status}</span></p>
           <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
         </div>
-
-        <div class="flex flex-col gap-2 sm:flex-row sm:gap-3">
+        <div class="flex flex-wrap gap-2 mt-2 mobile-btns">
           ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
           ${tx.status === "slip_uploaded" ? `
             <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm" 
@@ -109,7 +164,7 @@ async function loadTransactions() {
   });
 }
 
-/* ================= APPROVE ================= */
+/* ========== อนุมัติ ========== */
 async function approveTx(id, userId, name, amount) {
   const { isConfirmed } = await Swal.fire({
     title: "ยืนยันการอนุมัติ?",
@@ -117,7 +172,8 @@ async function approveTx(id, userId, name, amount) {
     icon: "question",
     showCancelButton: true,
     confirmButtonText: "อนุมัติ",
-    cancelButtonText: "ยกเลิก"
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#16a34a"
   });
   if (!isConfirmed) return;
 
@@ -143,7 +199,7 @@ async function approveTx(id, userId, name, amount) {
   loadTransactions();
 }
 
-/* ================= REJECT ================= */
+/* ========== ยกเลิก ========== */
 async function rejectTx(id, userId, name, amount) {
   const { value: reason } = await Swal.fire({
     title: "ยกเลิกรายการ?",
@@ -151,7 +207,8 @@ async function rejectTx(id, userId, name, amount) {
     inputPlaceholder: "ระบุเหตุผล (ถ้ามี)",
     showCancelButton: true,
     confirmButtonText: "ยืนยัน",
-    cancelButtonText: "ยกเลิก"
+    cancelButtonText: "ยกเลิก",
+    confirmButtonColor: "#dc2626"
   });
   if (reason === undefined) return;
 
@@ -178,7 +235,11 @@ async function rejectTx(id, userId, name, amount) {
   loadTransactions();
 }
 
-/* ================= INIT ================= */
+/* 🔄 Refresh / Search */
+document.getElementById("refreshBtn").onclick = () => loadTransactions();
+document.getElementById("searchInput").oninput = e => loadTransactions(e.target.value);
+
+/* ✅ Init */
 loadTransactions();
 </script>
 </body>
