@@ -3,22 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>สหกรณ์ | หน้าผู้ดูแลระบบ</title>
+  <title>สหกรณ์ | ผู้ดูแลระบบ</title>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { font-family: 'Prompt', sans-serif; background: #f9fafb; }
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    .status { font-weight: 600; }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+
+<body class="min-h-screen">
   <div class="max-w-5xl mx-auto p-6">
     <h1 class="text-2xl font-bold text-center text-green-700 mb-6">🛠 ระบบจัดการคำสั่งซื้อหุ้น</h1>
-
     <div id="txList" class="space-y-4"></div>
   </div>
 
 <script>
 /* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // ใช้ service_role เพื่อ bypass RLS
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // ใช้ service_role เท่านั้น
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -27,41 +34,57 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 async function loadTransactions() {
   const { data, error } = await supabase
     .from("transactions")
-    .select("*, members:first_name, members:last_name, members:group_name")
+    .select(`
+      *,
+      members (
+        first_name,
+        last_name,
+        group_name
+      )
+    `)
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error(error);
+    console.error("❌ Load error:", error);
     return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
   }
 
   const list = document.getElementById("txList");
   list.innerHTML = "";
 
+  if (!data || data.length === 0) {
+    list.innerHTML = `<p class="text-center text-gray-400">ไม่มีข้อมูลคำสั่งซื้อ</p>`;
+    return;
+  }
+
   data.forEach(tx => {
     const div = document.createElement("div");
-    div.className = "bg-white p-4 rounded-xl shadow";
+    div.className = "card";
 
     const statusColor = {
       pending: "text-yellow-600",
       slip_uploaded: "text-blue-600",
       approved: "text-green-600",
       rejected: "text-red-600"
-    }[tx.status] || "text-gray-500";
+    }[tx.status] || "text-gray-600";
 
     div.innerHTML = `
       <div class="flex justify-between items-center">
         <div>
-          <p class="font-semibold">${tx.line_display_name}</p>
-          <p class="text-sm text-gray-500">${tx.shares} หุ้น • ${tx.amount.toLocaleString()} บาท</p>
-          <p class="${statusColor} font-medium mt-1">สถานะ: ${tx.status}</p>
-          <p class="text-xs text-gray-400">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+          <p class="font-semibold text-lg">${tx.members?.first_name || ''} ${tx.members?.last_name || ''}</p>
+          <p class="text-sm text-gray-500">กลุ่ม: ${tx.members?.group_name || '-'}</p>
+          <p class="text-sm text-gray-500 mt-1">หุ้น: ${tx.shares} หน่วย • ยอด: ${Number(tx.amount).toLocaleString()} บาท</p>
+          <p class="${statusColor} status mt-1">สถานะ: ${tx.status}</p>
+          <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
         </div>
+
         <div class="flex flex-col gap-2">
           ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
           ${tx.status === "slip_uploaded" ? `
-            <button class="bg-green-600 text-white px-3 py-1 rounded text-sm" onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.line_display_name}', ${tx.amount})">✅ อนุมัติ</button>
-            <button class="bg-red-600 text-white px-3 py-1 rounded text-sm" onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${tx.line_display_name}', ${tx.amount})">❌ ยกเลิก</button>
+            <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm" 
+              onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount})">✅ อนุมัติ</button>
+            <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm" 
+              onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount})">❌ ยกเลิก</button>
           ` : ""}
         </div>
       </div>
@@ -73,7 +96,7 @@ async function loadTransactions() {
 /* ================= APPROVE ================= */
 async function approveTx(id, userId, name, amount) {
   const { isConfirmed } = await Swal.fire({
-    title: "อนุมัติคำสั่งซื้อ?",
+    title: "ยืนยันการอนุมัติ?",
     html: `<b>${name}</b><br>ยอด ${amount.toLocaleString()} บาท`,
     icon: "question",
     showCancelButton: true,
@@ -89,7 +112,7 @@ async function approveTx(id, userId, name, amount) {
 
   if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
 
-  // ✅ ส่ง Flex ไปยังผู้ใช้
+  // ✅ ส่ง Flex
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -124,7 +147,7 @@ async function rejectTx(id, userId, name, amount) {
 
   if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
 
-  // ✅ ส่ง Flex ไปยังผู้ใช้
+  // ✅ ส่ง Flex
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
