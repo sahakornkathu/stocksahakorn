@@ -14,42 +14,47 @@
 </head>
 
 <body class="bg-gray-50 min-h-screen">
-  <div class="max-w-2xl mx-auto p-4">
+  <div id="app" class="max-w-2xl mx-auto p-4">
     <h1 class="text-2xl font-bold text-center mb-4">🪙 ซื้อหุ้นสหกรณ์</h1>
     <p id="greeting" class="text-center text-gray-600 mb-4">กำลังเชื่อมต่อกับ LINE...</p>
 
     <!-- 🔹 สินค้าแบบ Card -->
-    <div class="grid grid-cols-2 gap-3 mb-5" id="productGrid"></div>
+    <div id="mainArea">
+      <div class="grid grid-cols-2 gap-3 mb-5" id="productGrid"></div>
 
-    <!-- 🔹 ตะกร้า -->
-    <div class="bg-white p-4 rounded-xl shadow">
-      <h2 class="font-semibold mb-2">🛒 ตะกร้าของคุณ</h2>
-      <div id="cartList" class="text-sm text-gray-700 mb-3">ตะกร้าว่าง</div>
-      <div class="flex justify-between items-center mb-2">
-        <div>
-          <div class="text-sm">ยอดรวม</div>
-          <div id="cartTotal" class="text-lg font-bold">0 บาท</div>
+      <!-- 🔹 ตะกร้า -->
+      <div class="bg-white p-4 rounded-xl shadow">
+        <h2 class="font-semibold mb-2">🛒 ตะกร้าของคุณ</h2>
+        <div id="cartList" class="text-sm text-gray-700 mb-3">ตะกร้าว่าง</div>
+        <div class="flex justify-between items-center mb-2">
+          <div>
+            <div class="text-sm">ยอดรวม</div>
+            <div id="cartTotal" class="text-lg font-bold">0 บาท</div>
+          </div>
+          <button id="checkoutBtn" class="bg-green-600 text-white px-4 py-2 rounded">ชำระเงิน</button>
         </div>
-        <button id="checkoutBtn" class="bg-green-600 text-white px-4 py-2 rounded">ชำระเงิน</button>
+        <p id="cartMsg" class="text-sm text-red-600 mt-1"></p>
       </div>
-      <p id="cartMsg" class="text-sm text-red-600 mt-1"></p>
+
+      <!-- 🔹 แสดง QR + อัปโหลดสลิป -->
+      <div id="checkoutArea" class="hidden mt-5 bg-white p-4 rounded-xl shadow">
+        <h3 class="font-semibold mb-2">📄 ใบแจ้งการชำระ</h3>
+        <p id="txInfo" class="text-sm text-gray-700 mb-2"></p>
+        <img id="qrImg" class="mx-auto mb-3 w-60 rounded" alt="PromptPay QR" />
+        <label class="block text-sm mb-1">📷 อัปโหลดสลิปการโอน</label>
+        <input id="slipFile" type="file" accept="image/*" class="mb-3 w-full border rounded p-1" />
+        <button id="uploadSlipBtn" class="bg-blue-600 text-white w-full p-2 rounded">📤 ส่งหลักฐาน</button>
+        <p id="uploadMsg" class="text-sm mt-2 text-center"></p>
+      </div>
     </div>
 
-    <!-- 🔹 แสดง QR + อัปโหลดสลิป -->
-    <div id="checkoutArea" class="hidden mt-5 bg-white p-4 rounded-xl shadow">
-      <h3 class="font-semibold mb-2">📄 ใบแจ้งการชำระ</h3>
-      <p id="txInfo" class="text-sm text-gray-700 mb-2"></p>
-      <img id="qrImg" class="mx-auto mb-3 w-60 rounded" alt="PromptPay QR" />
-      <label class="block text-sm mb-1">📷 อัปโหลดสลิปการโอน</label>
-      <input id="slipFile" type="file" accept="image/*" class="mb-3 w-full border rounded p-1" />
-      <button id="uploadSlipBtn" class="bg-blue-600 text-white w-full p-2 rounded">📤 ส่งหลักฐาน</button>
-      <p id="uploadMsg" class="text-sm mt-2 text-center"></p>
-    </div>
+    <!-- 🔹 พื้นที่แสดงรายละเอียดคำสั่งซื้อ (เมื่อเปิดด้วย ?txId=xxxx) -->
+    <div id="detailArea" class="hidden"></div>
   </div>
 
 <script>
 /* ================= CONFIG ================= */
-const LIFF_ID = "1660910795-4w2rdGn6"; // 👉 LIFF ID
+const LIFF_ID = "1660910795-4w2rdGn6"; // 👉 ใส่ LIFF ID ของคุณ
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co"; // 👉 URL Supabase
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 👉 anon key
 const PAYEE_PHONE = "0812345678"; // 👉 เบอร์ PromptPay
@@ -57,7 +62,6 @@ const STORAGE_BUCKET = "proofs"; // 👉 bucket name
 const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // 👉 Edge Function
 const SHARE_PRICE = 10; // หุ้นละ 10 บาท
 const MIN_TOTAL = 100; // ขั้นต่ำ 100 บาท
-const MAX_MONTHLY_APPROVED = 20000; // สูงสุดต่อเดือน
 /* ========================================== */
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -66,16 +70,60 @@ let cart = { shares: 0, amount: 0 };
 let currentTxId = null;
 let lastOrder = { shares: 0, amount: 0 };
 
+/* ✅ อ่านค่า txId จาก URL (ถ้ามี) */
+const urlParams = new URLSearchParams(window.location.search);
+const txId = urlParams.get("txId");
+
 /* ✅ เริ่มต้น LIFF */
 async function init() {
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) return liff.login();
   profile = await liff.getProfile();
   document.getElementById("greeting").innerText = `สวัสดี ${profile.displayName}`;
+
+  if (txId) {
+    document.getElementById("mainArea").classList.add("hidden");
+    await showTransactionDetails(txId);
+  }
 }
 init();
 
-/* ✅ สินค้าแบบ Card */
+/* ✅ แสดงรายละเอียดคำสั่งซื้อ (ถ้ามี ?txId=...) */
+async function showTransactionDetails(txId) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", txId)
+    .single();
+
+  const area = document.getElementById("detailArea");
+  area.classList.remove("hidden");
+
+  if (error || !data) {
+    area.innerHTML = `<div class="text-center text-red-600">❌ ไม่พบข้อมูลคำสั่งซื้อ</div>`;
+    return;
+  }
+
+  area.innerHTML = `
+    <div class="bg-white p-5 rounded-xl shadow text-center">
+      <h2 class="text-xl font-bold mb-2">📄 รายละเอียดคำสั่งซื้อ</h2>
+      <p>ชื่อ: ${data.line_display_name}</p>
+      <p>จำนวน: ${data.shares} หุ้น</p>
+      <p>ยอดเงิน: ${Number(data.amount).toLocaleString()} บาท</p>
+      <p>สถานะ: ${data.status}</p>
+      ${
+        data.proof_url
+          ? `<img src="${data.proof_url}" class="mx-auto mt-3 w-64 rounded shadow" alt="สลิป"/>`
+          : "<p class='text-gray-500 mt-3'>ยังไม่มีหลักฐานการโอน</p>"
+      }
+      <button onclick="window.location.href='https://liff.line.me/${LIFF_ID}'"
+        class="mt-4 bg-green-600 text-white px-4 py-2 rounded">
+        🏠 กลับหน้าหลัก
+      </button>
+    </div>`;
+}
+
+/* ✅ แสดงสินค้าแบบ Card */
 const productOptions = [
   { shares: 10, label: "หุ้น 10 หน่วย", desc: "100 บาท" },
   { shares: 50, label: "หุ้น 50 หน่วย", desc: "500 บาท" },
@@ -103,7 +151,6 @@ grid.addEventListener("click", e => {
   }
 });
 
-/* ✅ แสดงตะกร้า */
 function renderCart() {
   const list = document.getElementById("cartList");
   if (cart.shares === 0) list.innerText = "ตะกร้าว่าง";
@@ -127,10 +174,8 @@ document.getElementById("checkoutBtn").addEventListener("click", async () => {
   if (error) return alert("Error: " + error.message);
   currentTxId = data.id;
 
-  // ✅ เก็บข้อมูลล่าสุดไว้
   lastOrder = { shares: cart.shares, amount: cart.amount };
 
-  // ✅ แสดง QR PromptPay
   const qrUrl = `https://promptpay.io/${PAYEE_PHONE}/${cart.amount}.png`;
   document.getElementById("txInfo").innerText = 
     `จำนวน ${cart.shares} หุ้น | ยอด ${cart.amount.toLocaleString()} บาท`;
@@ -141,7 +186,7 @@ document.getElementById("checkoutBtn").addEventListener("click", async () => {
   renderCart();
 });
 
-/* ✅ Upload Slip + ส่ง Flex */
+/* ✅ อัปโหลดสลิป + ส่ง Flex */
 document.getElementById("uploadSlipBtn").addEventListener("click", async () => {
   const file = document.getElementById("slipFile").files[0];
   if (!file) return alert("กรุณาเลือกสลิปก่อน");
@@ -162,8 +207,7 @@ document.getElementById("uploadSlipBtn").addEventListener("click", async () => {
 
     document.getElementById("uploadMsg").innerText = "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบจากเจ้าหน้าที่";
 
-    // ✅ ส่ง Flex Message (หลังอัปโหลดเสร็จ)
-    const resp = await fetch(FUNCTION_URL, {
+    await fetch(FUNCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -175,8 +219,6 @@ document.getElementById("uploadSlipBtn").addEventListener("click", async () => {
         mode: "slip_uploaded"
       }),
     });
-    console.log("Response status:", resp.status);
-    console.log("Response text:", await resp.text());
   } catch (err) {
     console.error("❌ Upload or Flex Error:", err);
     document.getElementById("uploadMsg").innerText = "❌ เกิดข้อผิดพลาดขณะส่งหลักฐาน";
