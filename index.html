@@ -41,8 +41,8 @@ const PAYEE_PHONE = "0936494961"; // เบอร์ PromptPay
 const SHARE_PRICE = 10;
 const STORAGE_BUCKET = "proofs";
 /* ---------------------------------------- */
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let profile = null;
 
 async function init() {
