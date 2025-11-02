@@ -31,6 +31,7 @@
     <!-- 🔹 โซนเลือกซื้อ -->
     <div id="buyArea" class="hidden bg-white p-4 rounded-xl shadow">
       <h2 class="font-semibold mb-3">🛒 ซื้อหุ้น</h2>
+      <p id="monthlyInfo" class="text-sm text-gray-600 mb-3 text-right">ยอดซื้อเดือนนี้: 0 / 20,000 บาท</p>
       <div class="grid grid-cols-2 gap-3 mb-4" id="productGrid"></div>
       <div class="flex justify-between items-center">
         <div>
@@ -79,6 +80,7 @@ let profile = null;
 let cart = { shares: 0, amount: 0 };
 let currentTxId = null;
 let lastOrder = { shares: 0, amount: 0 };
+let totalThisMonth = 0;
 
 /* ================= INIT ================= */
 async function init() {
@@ -86,7 +88,8 @@ async function init() {
   if (!liff.isLoggedIn()) return liff.login();
   profile = await liff.getProfile();
   document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
-  loadMember(profile.userId);
+  await loadMember(profile.userId);
+  await checkMonthlyTotal();
 }
 init();
 
@@ -103,6 +106,25 @@ async function loadMember(userId) {
   document.getElementById("carryForward").innerText = member.carry_forward.toLocaleString();
   document.getElementById("purchaseYear").innerText = member.purchase_year.toLocaleString();
   document.getElementById("totalAmount").innerText = member.total_amount.toLocaleString();
+}
+
+/* ================= MONTHLY LIMIT ================= */
+async function checkMonthlyTotal() {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("amount")
+    .eq("line_user_id", profile.userId)
+    .eq("status", "approved")
+    .gte("created_at", startOfMonth)
+    .lte("created_at", endOfMonth);
+
+  if (error) return console.log(error);
+  totalThisMonth = data.reduce((sum, t) => sum + Number(t.amount), 0);
+  document.getElementById("monthlyInfo").innerText = `ยอดซื้อเดือนนี้: ${totalThisMonth.toLocaleString()} / 20,000 บาท`;
 }
 
 /* ================= SELECT SHARES ================= */
@@ -127,7 +149,11 @@ function addShare(count) {
 /* ================= CHECKOUT ================= */
 document.getElementById("checkoutBtn").onclick = async () => {
   if (cart.amount < MIN_TOTAL) return alert(`ขั้นต่ำ ${MIN_TOTAL} บาท`);
-  if (cart.amount > MAX_TOTAL) return alert(`สูงสุดต่อเดือน ${MAX_TOTAL} บาท`);
+  const projectedTotal = totalThisMonth + cart.amount;
+  if (projectedTotal > MAX_TOTAL) {
+    return alert(`❌ คุณซื้อหุ้นครบ ${totalThisMonth.toLocaleString()} บาทแล้วในเดือนนี้\nสามารถซื้อได้ไม่เกิน ${MAX_TOTAL.toLocaleString()} บาทต่อเดือน`);
+  }
+
   const { data, error } = await supabase.from("transactions").insert([{
     line_user_id: profile.userId,
     line_display_name: profile.displayName,
@@ -135,9 +161,11 @@ document.getElementById("checkoutBtn").onclick = async () => {
     amount: cart.amount,
     status: "pending"
   }]).select().single();
+
   if (error) return alert(error.message);
   currentTxId = data.id;
   lastOrder = { shares: cart.shares, amount: cart.amount };
+
   const qrUrl = `https://promptpay.io/${PROMPTPAY_NO}/${cart.amount}.png`;
   document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
   document.getElementById("qrImg").src = qrUrl;
@@ -148,10 +176,8 @@ document.getElementById("checkoutBtn").onclick = async () => {
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const file = document.getElementById("slipFile").files[0];
   if (!file) return alert("กรุณาเลือกไฟล์ก่อน");
-
   const loading = document.getElementById("loadingSpinner");
   loading.classList.remove("hidden");
-  document.getElementById("uploadMsg").innerText = "";
 
   try {
     const ext = file.name.split(".").pop();
@@ -162,7 +188,6 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
     const { data: publicUrl } = supabase.storage.from("proofs").getPublicUrl(path);
     await supabase.from("transactions").update({ proof_url: publicUrl.publicUrl }).eq("id", currentTxId);
 
-    // ส่ง Flex Message
     const res = await fetch(FUNCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -176,16 +201,13 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
     });
 
     loading.classList.add("hidden");
-
     if (res.ok) {
       alert("✅ ส่งสลิปเรียบร้อยแล้ว ขอบคุณค่ะ");
       setTimeout(() => {
         if (liff.isInClient()) liff.closeWindow();
         else window.location.href = `https://liff.line.me/${LIFF_ID}`;
       }, 1000);
-    } else {
-      alert("ส่งข้อมูลสำเร็จ แต่ไม่สามารถส่งข้อความไปยัง LINE ได้");
-    }
+    } else alert("ส่งข้อมูลสำเร็จ แต่ไม่สามารถส่งข้อความไปยัง LINE ได้");
   } catch (err) {
     loading.classList.add("hidden");
     alert("เกิดข้อผิดพลาด: " + err.message);
