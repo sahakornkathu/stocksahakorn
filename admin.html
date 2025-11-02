@@ -20,6 +20,8 @@
       <button id="refreshBtn" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">🔄 โหลดใหม่</button>
     </div>
 
+    <div id="statusMsg" class="text-center mb-3 text-sm text-gray-600"></div>
+
     <!-- ตารางข้อมูล -->
     <div class="overflow-x-auto bg-white p-4 rounded-xl shadow">
       <table class="w-full text-sm border border-gray-200">
@@ -49,13 +51,14 @@ const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send
 /* ========================================== */
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const statusMsg = document.getElementById("statusMsg");
 
-/* ================= LOAD DATA ================= */
+/* ================= โหลดข้อมูล ================= */
 async function loadTransactions() {
   const tableBody = document.getElementById("txTableBody");
   tableBody.innerHTML = `<tr><td colspan="9" class="text-center p-3 text-gray-500">กำลังโหลดข้อมูล...</td></tr>`;
+  statusMsg.textContent = "";
 
-  // ✅ JOIN ถูกต้องผ่าน Foreign Key
   const { data: transactions, error } = await supabase
     .from("transactions")
     .select(`
@@ -67,7 +70,6 @@ async function loadTransactions() {
       proof_url,
       status,
       created_at,
-      approved_at,
       members:members (
         first_name,
         last_name,
@@ -117,24 +119,28 @@ async function loadTransactions() {
   `).join("");
 }
 
-/* ================= APPROVE FUNCTION ================= */
+/* ================= อนุมัติ ================= */
 async function approveTx(txId, userId, memberName, amount) {
   if (!confirm(`ยืนยันการอนุมัติคำสั่งซื้อของ ${memberName}?`)) return;
 
-  // ✅ อัปเดตสถานะใน Supabase
+  statusMsg.textContent = "⏳ กำลังอนุมัติ...";
+  statusMsg.className = "text-center mb-3 text-sm text-yellow-600";
+
+  // ✅ อัปเดตใน Supabase
   const { error } = await supabase
     .from("transactions")
     .update({ status: "approved", approved_at: new Date().toISOString() })
     .eq("id", txId);
 
   if (error) {
-    alert("เกิดข้อผิดพลาดขณะอนุมัติ: " + error.message);
+    statusMsg.textContent = "❌ เกิดข้อผิดพลาดในการอัปเดตสถานะ: " + error.message;
+    statusMsg.className = "text-center mb-3 text-sm text-red-600";
     return;
   }
 
-  // ✅ ส่ง Flex Message แจ้งสมาชิก
+  // ✅ ส่ง Flex Message
   try {
-    await fetch(FUNCTION_URL, {
+    const res = await fetch(FUNCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -144,9 +150,18 @@ async function approveTx(txId, userId, memberName, amount) {
         mode: "approved_success"
       })
     });
-    alert("✅ อนุมัติเรียบร้อยและส่งแจ้งสมาชิกสำเร็จ");
+
+    if (res.ok) {
+      statusMsg.textContent = `✅ อนุมัติสำเร็จ และส่ง Flex Message ไปยัง ${memberName} เรียบร้อย`;
+      statusMsg.className = "text-center mb-3 text-sm text-green-600";
+    } else {
+      const text = await res.text();
+      statusMsg.textContent = `⚠️ อนุมัติสำเร็จ แต่ส่ง Flex ไม่สำเร็จ (${text})`;
+      statusMsg.className = "text-center mb-3 text-sm text-red-600";
+    }
   } catch (err) {
-    alert("ส่ง Flex Message ล้มเหลว: " + err.message);
+    statusMsg.textContent = `❌ อนุมัติสำเร็จ แต่ส่ง Flex ผิดพลาด: ${err.message}`;
+    statusMsg.className = "text-center mb-3 text-sm text-red-600";
   }
 
   loadTransactions();
