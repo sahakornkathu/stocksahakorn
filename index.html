@@ -103,6 +103,26 @@ document.getElementById("toggleMode").onclick = () => {
     document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
 };
 
+/* ================= สลับแท็บ ================= */
+const tabBuy = document.getElementById("tabBuy");
+const tabHistory = document.getElementById("tabHistory");
+const tabBuyContent = document.getElementById("tabBuyContent");
+const tabHistoryContent = document.getElementById("tabHistoryContent");
+
+tabBuy.onclick = () => {
+  tabBuy.classList.add("tab-active");
+  tabHistory.classList.remove("tab-active");
+  tabBuyContent.classList.remove("hidden");
+  tabHistoryContent.classList.add("hidden");
+};
+
+tabHistory.onclick = () => {
+  tabHistory.classList.add("tab-active");
+  tabBuy.classList.remove("tab-active");
+  tabBuyContent.classList.add("hidden");
+  tabHistoryContent.classList.remove("hidden");
+};
+
 /* ================= INIT ================= */
 async function init() {
   await liff.init({ liffId: "1660910795-4w2rdGn6" });
@@ -134,7 +154,9 @@ const SHARE_PRICE = 10;
   const div = document.createElement("div");
   div.className = "border p-3 rounded-xl text-center hover:shadow cursor-pointer";
   div.innerHTML = `<p class="font-semibold">${s} หน่วย</p><p class="text-sm text-gray-500">${(s*SHARE_PRICE).toLocaleString()} บาท</p>`;
-  div.onclick = () => { cart.shares += s; cart.amount = cart.shares * SHARE_PRICE;
+  div.onclick = () => {
+    cart.shares += s;
+    cart.amount = cart.shares * SHARE_PRICE;
     document.getElementById("shareCount").innerText = cart.shares;
     document.getElementById("totalPrice").innerText = cart.amount.toLocaleString();
   };
@@ -157,7 +179,7 @@ document.getElementById("checkoutBtn").onclick = async () => {
   setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth" }), 300);
 };
 
-/* ================= อัปโหลดสลิป (Bucket: proofs) ================= */
+/* ================= อัปโหลดสลิป ================= */
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const fileInput = document.getElementById("slipFile");
   if (!fileInput.files.length) return Swal.fire("กรุณาแนบสลิปก่อน", "", "info");
@@ -170,16 +192,15 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
   const { data: urlData } = supabase.storage.from("proofs").getPublicUrl(fileName);
   const proofUrl = urlData.publicUrl;
 
-  const { data: tx } = await supabase.from("transactions").insert({
+  await supabase.from("transactions").insert({
     line_user_id: profile.userId,
     line_display_name: profile.displayName,
     shares: cart.shares,
     amount: cart.amount,
     proof_url: proofUrl,
     status: "slip_uploaded"
-  }).select().single();
+  });
 
-  // ✅ ส่ง Flex message แจ้งเตือนผู้ใช้
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -255,5 +276,6 @@ document.getElementById("loadHistoryBtn").onclick = async () => {
   Swal.fire("✅ โหลดสำเร็จ", `พบ ${data.length} รายการ`, "success");
 };
 </script>
+
 </body>
 </html>
