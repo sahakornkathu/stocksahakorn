@@ -94,7 +94,7 @@ const PROMPTPAY_NO = "0936494961";
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let profile = null;
 let cart = { shares: 0, amount: 0 };
-let isLocked = false; // 🔒 ล็อกเมื่อกดชำระแล้ว
+let isLocked = false;
 
 /* 🌙 โหมดมืด */
 document.getElementById("toggleMode").onclick = () => {
@@ -115,7 +115,6 @@ tabBuy.onclick = () => {
   tabBuyContent.classList.remove("hidden");
   tabHistoryContent.classList.add("hidden");
 };
-
 tabHistory.onclick = () => {
   tabHistory.classList.add("tab-active");
   tabBuy.classList.remove("tab-active");
@@ -177,20 +176,50 @@ document.getElementById("clearBtn").onclick = () => {
   Swal.fire("✅ ล้างตะกร้าแล้ว", "คุณสามารถเลือกซื้อใหม่ได้", "success");
 };
 
-/* ========== ชำระเงิน ========== */
+/* ========== ชำระเงิน (ตรวจยอดรายเดือน) ========== */
 document.getElementById("checkoutBtn").onclick = async () => {
   if (cart.amount < 100) return Swal.fire("ขั้นต่ำ 100 บาท", "", "warning");
-  if (cart.amount > 20000) return Swal.fire("สูงสุด 20,000 บาทต่อเดือน", "", "warning");
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const start = new Date(year, month, 1).toISOString();
+  const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+
+  const { data: txs, error } = await supabase
+    .from("transactions")
+    .select("amount")
+    .eq("line_user_id", profile.userId)
+    .eq("status", "approved")
+    .gte("created_at", start)
+    .lte("created_at", end);
+
+  if (error) {
+    console.error("❌ ตรวจสอบยอดสะสมผิดพลาด:", error);
+    return Swal.fire("เกิดข้อผิดพลาด", "ไม่สามารถตรวจสอบยอดได้", "error");
+  }
+
+  const totalApproved = txs.reduce((sum, tx) => sum + Number(tx.amount), 0);
+  const totalAfter = totalApproved + cart.amount;
+
+  if (totalAfter > 20000) {
+    return Swal.fire(
+      "❌ ไม่สามารถซื้อได้",
+      `คุณมียอดซื้อสะสมเดือนนี้ ${totalApproved.toLocaleString()} บาท\nซึ่งจะเกิน 20,000 บาท หากซื้อเพิ่ม`,
+      "warning"
+    );
+  }
 
   isLocked = true;
   const qrUrl = `https://promptpay.io/${PROMPTPAY_NO}/${cart.amount}.png`;
   document.getElementById("qrImg").src = qrUrl;
   document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
   document.getElementById("checkoutArea").classList.remove("hidden");
+
   setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth", block: "center" }), 300);
 };
 
-/* ========== อัปโหลดสลิป (proofs) ========== */
+/* ========== อัปโหลดสลิป ========== */
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const fileInput = document.getElementById("slipFile");
   if (!fileInput.files.length) return Swal.fire("กรุณาแนบสลิปก่อน", "", "info");
