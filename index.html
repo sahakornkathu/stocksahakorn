@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
-  <!-- ✅ Libraries -->
+  <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -18,6 +18,8 @@
     .tab-active { border-bottom: 3px solid #16a34a; color: #16a34a; font-weight: bold; }
     .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
     .dark-mode input, .dark-mode select { background: #334155; color: #f1f5f9; border-color: #475569; }
+    .product-card { transition: transform .12s; }
+    .product-card:hover { transform: translateY(-4px); }
   </style>
 </head>
 
@@ -36,7 +38,7 @@
 
     <p id="status" class="text-center text-gray-500 mb-4">กำลังเชื่อมต่อ...</p>
 
-    <!-- ========== TAB: ซื้อหุ้น ========== -->
+    <!-- TAB: BUY -->
     <div id="tabBuyContent">
       <div id="memberInfo" class="hidden card mb-4">
         <p><b>ชื่อ:</b> <span id="memberName"></span></p>
@@ -52,6 +54,7 @@
       <div id="buyArea" class="hidden card">
         <h2 class="font-semibold mb-3">🛒 ซื้อหุ้น</h2>
         <div class="grid grid-cols-2 gap-3 mb-4" id="productGrid"></div>
+
         <div class="flex justify-between items-center">
           <div>
             <p>หุ้นรวม: <span id="shareCount">0</span> หน่วย</p>
@@ -59,6 +62,7 @@
           </div>
           <button id="checkoutBtn" class="bg-green-600 text-white px-4 py-2 rounded">ชำระเงิน</button>
         </div>
+
         <button id="clearBtn" class="bg-gray-300 text-gray-800 w-full mt-3 py-2 rounded">🧹 ล้างตะกร้า</button>
       </div>
 
@@ -72,13 +76,14 @@
       </div>
     </div>
 
-    <!-- ========== TAB: ประวัติย้อนหลัง ========== -->
+    <!-- TAB: HISTORY -->
     <div id="tabHistoryContent" class="hidden">
       <div class="card mb-4">
         <h3 class="font-semibold mb-2">📅 เลือกเดือนเพื่อดูประวัติ</h3>
         <input type="month" id="monthPicker" class="border rounded p-2 w-full mb-3" />
         <button id="loadHistoryBtn" class="bg-green-600 text-white w-full py-2 rounded">🔍 ดูประวัติ</button>
       </div>
+
       <div id="historyArea" class="card hidden">
         <h3 class="font-semibold mb-2">📜 รายการซื้อหุ้น</h3>
         <div id="historyList" class="space-y-3"></div>
@@ -87,93 +92,118 @@
   </div>
 
 <script>
-/* ================= CONFIG ================= */
+/* ========== CONFIG ========== */
+/* เปลี่ยน SUPABASE_KEY เป็นค่า service_role หรือ anon ตามที่คุณต้องการ
+   แต่หากเรียก insert/update จาก frontend ปลอดภัยกว่าให้ใช้ RLS+edge functions */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // <-- วางคีย์จริงของคุณ
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 const PROMPTPAY_NO = "0936494961";
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let profile = null;
 let cart = { shares: 0, amount: 0 };
-let isLocked = false;
+let isLocked = false; // ล็อกไม่ให้เพิ่มหุ้นหลังชำระ
 
-/* 🌙 โหมดมืด */
+/* ========== UI: dark mode toggle ========== */
 document.getElementById("toggleMode").onclick = () => {
   document.body.classList.toggle("dark-mode");
-  document.getElementById("toggleMode").textContent =
-    document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
+  document.getElementById("toggleMode").textContent = document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
 };
 
-/* ========== สลับแท็บ ========== */
+/* ========== Tab switching ========== */
 document.getElementById("tabBuy").onclick = () => {
   document.getElementById("tabBuy").classList.add("tab-active");
   document.getElementById("tabHistory").classList.remove("tab-active");
   document.getElementById("tabBuyContent").classList.remove("hidden");
   document.getElementById("tabHistoryContent").classList.add("hidden");
+  isLocked = false; // กลับมาโหมดซื้อ ให้ unlock
 };
 document.getElementById("tabHistory").onclick = () => {
   document.getElementById("tabHistory").classList.add("tab-active");
   document.getElementById("tabBuy").classList.remove("tab-active");
   document.getElementById("tabBuyContent").classList.add("hidden");
   document.getElementById("tabHistoryContent").classList.remove("hidden");
-  isLocked = true;
+  isLocked = true; // ขณะดูประวัติ ห้ามเพิ่ม
 };
 
-/* ========== INIT ========== */
+/* ========== INIT LIFF & load member ========== */
 async function init() {
-  await liff.init({ liffId: "1660910795-4w2rdGn6" });
-  if (!liff.isLoggedIn()) return liff.login();
-  profile = await liff.getProfile();
-  document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
-  loadMember(profile.userId);
+  try {
+    await liff.init({ liffId: "1660910795-4w2rdGn6" });
+    if (!liff.isLoggedIn()) return liff.login();
+    profile = await liff.getProfile();
+    document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
+    await loadMember(profile.userId);
+  } catch (err) {
+    console.error("LIFF init error:", err);
+    document.getElementById("status").innerText = "ไม่สามารถเชื่อมต่อ LIFF ได้";
+  }
 }
 init();
 
-/* ========== โหลดข้อมูลสมาชิก ========== */
+/* ========== loadMember: แสดงข้อมูล + คำนวณยอดคงเหลือเดือนนี้ ========== */
 async function loadMember(userId) {
-  const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
-  if (!member) return Swal.fire("ไม่พบข้อมูลสมาชิก", "กรุณาสมัครสมาชิกก่อน", "error");
+  try {
+    const { data: member, error: memErr } = await supabase
+      .from("members")
+      .select("line_display_name, first_name, last_name, member_no, group_name, carry_forward, purchase_year, total_amount")
+      .eq("line_user_id", userId)
+      .single();
 
-  // ✅ คำนวณยอดคงเหลือที่สามารถซื้อได้ในเดือนนี้
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const start = new Date(year, month, 1).toISOString();
-  const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    if (memErr || !member) {
+      console.error("member load error:", memErr);
+      return Swal.fire("ไม่พบข้อมูลสมาชิก", "กรุณาลงทะเบียนก่อน", "error");
+    }
 
-  const { data: approvedTx } = await supabase
-    .from("transactions")
-    .select("amount")
-    .eq("line_user_id", userId)
-    .eq("status", "approved")
-    .gte("created_at", start)
-    .lte("created_at", end);
+    // คำนวณยอด approved เดือนนี้
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const start = new Date(year, month, 1, 0, 0, 0).toISOString();
+    const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
 
-  const usedThisMonth = approvedTx?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0;
-  const remaining = Math.max(20000 - usedThisMonth, 0);
+    const { data: approvedTx, error: txErr } = await supabase
+      .from("transactions")
+      .select("amount")
+      .eq("line_user_id", userId)
+      .eq("status", "approved")
+      .gte("created_at", start)
+      .lte("created_at", end);
 
-  document.getElementById("memberInfo").classList.remove("hidden");
-  document.getElementById("buyArea").classList.remove("hidden");
-  document.getElementById("memberName").innerText = `${member.first_name} ${member.last_name}`;
-  document.getElementById("memberNo").innerText = member.member_no;
-  document.getElementById("memberGroup").innerText = member.group_name;
-  document.getElementById("carryForward").innerText = member.carry_forward.toLocaleString();
-  document.getElementById("purchaseYear").innerText = member.purchase_year.toLocaleString();
-  document.getElementById("totalAmount").innerText = member.total_amount.toLocaleString();
-  document.getElementById("remainingLimit").innerHTML =
-    `💰 <b>ซื้อหุ้นได้อีก:</b> <span style="color:${remaining <= 0 ? 'red' : 'green'}">${remaining.toLocaleString()}</span> บาท`;
+    if (txErr) console.warn("approved tx load warn:", txErr);
+
+    const usedThisMonth = approvedTx?.reduce((s, t) => s + Number(t.amount), 0) || 0;
+    const remaining = Math.max(20000 - usedThisMonth, 0);
+
+    // render member info
+    document.getElementById("memberInfo").classList.remove("hidden");
+    document.getElementById("buyArea").classList.remove("hidden");
+    document.getElementById("memberName").innerText = `${member.first_name || member.line_display_name || ""}`;
+    document.getElementById("memberNo").innerText = member.member_no || "-";
+    document.getElementById("memberGroup").innerText = member.group_name || "-";
+    document.getElementById("carryForward").innerText = Number(member.carry_forward || 0).toLocaleString();
+    document.getElementById("purchaseYear").innerText = Number(member.purchase_year || 0).toLocaleString();
+    document.getElementById("totalAmount").innerText = Number(member.total_amount || 0).toLocaleString();
+    document.getElementById("remainingLimit").innerHTML =
+      `💰 <b>ซื้อหุ้นได้อีก:</b> <span style="color:${remaining <= 0 ? 'red' : 'green'}">${remaining.toLocaleString()}</span> บาท`;
+  } catch (err) {
+    console.error("loadMember error:", err);
+    Swal.fire("เกิดข้อผิดพลาด", "ไม่สามารถโหลดข้อมูลสมาชิกได้", "error");
+  }
 }
 
-/* ========== ระบบตะกร้า ========== */
+/* ========== PRODUCT GRID / CART ========== */
 const SHARE_PRICE = 10;
 const productGrid = document.getElementById("productGrid");
 [10, 50, 100, 500].forEach(s => {
   const div = document.createElement("div");
-  div.className = "border p-3 rounded-xl text-center hover:shadow cursor-pointer";
+  div.className = "product-card border p-3 rounded-xl text-center hover:shadow cursor-pointer";
   div.innerHTML = `<p class="font-semibold">${s} หน่วย</p><p class="text-sm text-gray-500">${(s * SHARE_PRICE).toLocaleString()} บาท</p>`;
   div.onclick = () => {
-    if (isLocked) return Swal.fire("🚫 ไม่สามารถเพิ่มหุ้นได้", "กรุณาล้างตะกร้าก่อนทำรายการใหม่", "warning");
+    if (isLocked) {
+      return Swal.fire("🚫 ไม่สามารถเพิ่มหุ้นได้", "กรุณาล้างตะกร้าก่อนทำรายการใหม่", "warning");
+    }
     cart.shares += s;
     cart.amount = cart.shares * SHARE_PRICE;
     document.getElementById("shareCount").innerText = cart.shares;
@@ -182,7 +212,7 @@ const productGrid = document.getElementById("productGrid");
   productGrid.appendChild(div);
 });
 
-/* 🧹 ล้างตะกร้า */
+/* ========== CLEAR CART ========== */
 document.getElementById("clearBtn").onclick = () => {
   cart = { shares: 0, amount: 0 };
   isLocked = false;
@@ -194,112 +224,176 @@ document.getElementById("clearBtn").onclick = () => {
   Swal.fire("✅ ล้างตะกร้าแล้ว", "คุณสามารถเลือกซื้อใหม่ได้", "success");
 };
 
-/* ========== ชำระเงิน ========== */
+/* ========== CHECKOUT (ตรวจยอดเดือน และ lock) ========== */
 document.getElementById("checkoutBtn").onclick = async () => {
-  if (cart.amount < 100) return Swal.fire("ขั้นต่ำ 100 บาท", "", "warning");
+  try {
+    if (cart.amount < 100) return Swal.fire("ขั้นต่ำ 100 บาท", "", "warning");
 
-  // ตรวจยอดซื้อเดือนนี้
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const start = new Date(year, month, 1).toISOString();
-  const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    // ตรวจยอด approved เดือนนี้
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const start = new Date(year, month, 1, 0, 0, 0).toISOString();
+    const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
 
-  const { data: txs } = await supabase
-    .from("transactions")
-    .select("amount")
-    .eq("line_user_id", profile.userId)
-    .eq("status", "approved")
-    .gte("created_at", start)
-    .lte("created_at", end);
+    const { data: txs, error } = await supabase
+      .from("transactions")
+      .select("amount")
+      .eq("line_user_id", profile.userId)
+      .eq("status", "approved")
+      .gte("created_at", start)
+      .lte("created_at", end);
 
-  const totalApproved = txs?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0;
-  if (totalApproved + cart.amount > 20000)
-    return Swal.fire("❌ ไม่สามารถซื้อได้", `ยอดรวมเกิน 20,000 บาท`, "warning");
+    if (error) {
+      console.error("check month error:", error);
+      return Swal.fire("เกิดข้อผิดพลาด", "ไม่สามารถตรวจสอบยอดได้", "error");
+    }
 
-  isLocked = true;
-  const qrUrl = `https://promptpay.io/${PROMPTPAY_NO}/${cart.amount}.png`;
-  document.getElementById("qrImg").src = qrUrl;
-  document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
-  document.getElementById("checkoutArea").classList.remove("hidden");
-  setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth", block: "center" }), 300);
-};
+    const totalApproved = txs?.reduce((sum, t) => sum + Number(t.amount), 0) || 0;
+    if (totalApproved + cart.amount > 20000) {
+      return Swal.fire("❌ ไม่สามารถซื้อได้", `ยอดรวมที่อนุมัติแล้วในเดือนนี้ ${totalApproved.toLocaleString()} บาท — จะเกิน 20,000 บาท`, "warning");
+    }
 
-/* ========== อัปโหลดสลิป ========== */
-document.getElementById("uploadSlipBtn").onclick = async () => {
-  const fileInput = document.getElementById("slipFile");
-  if (!fileInput.files.length) return Swal.fire("กรุณาแนบสลิปก่อน", "", "info");
-
-  const file = fileInput.files[0];
-  const fileName = `${profile.userId}_${Date.now()}.jpg`;
-  const { error: uploadError } = await supabase.storage.from("proofs").upload(fileName, file);
-  if (uploadError) return Swal.fire("อัปโหลดผิดพลาด", uploadError.message, "error");
-
-  const { data: urlData } = supabase.storage.from("proofs").getPublicUrl(fileName);
-  const proofUrl = urlData.publicUrl;
-
-  await supabase.from("transactions").insert({
-    line_user_id: profile.userId,
-    line_display_name: profile.displayName,
-    shares: cart.shares,
-    amount: cart.amount,
-    proof_url: proofUrl,
-    status: "slip_uploaded"
-  });
-
-  await fetch(FUNCTION_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userId: profile.userId,
-      memberName: profile.displayName,
-      amount: cart.amount,
-      proofUrl,
-      mode: "slip_uploaded"
-    })
-  });
-
-  Swal.fire("✅ ส่งสลิปเรียบร้อย", "เจ้าหน้าที่จะตรวจสอบภายใน 24 ชม.", "success");
-  setTimeout(() => liff.closeWindow(), 1500);
-};
-
-/* ========== ประวัติย้อนหลัง ========== */
-document.getElementById("loadHistoryBtn").onclick = async () => {
-  if (!profile) return Swal.fire("กรุณาเข้าสู่ระบบก่อน", "", "warning");
-  const monthVal = document.getElementById("monthPicker").value;
-  if (!monthVal) return Swal.fire("กรุณาเลือกเดือนก่อน", "", "info");
-
-  const [year, month] = monthVal.split("-");
-  const start = new Date(year, month - 1, 1).toISOString();
-  const end = new Date(year, month, 0, 23, 59, 59).toISOString();
-
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("shares, amount, status, created_at, proof_url")
-    .eq("line_user_id", profile.userId)
-    .gte("created_at", start)
-    .lte("created_at", end)
-    .order("created_at", { ascending: false });
-
-  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
-
-  const list = document.getElementById("historyList");
-  const area = document.getElementById("historyArea");
-  list.innerHTML = "";
-  area.classList.remove("hidden");
-
-  if (!data.length) {
-    list.innerHTML = "<p class='text-center text-gray-400'>ไม่พบข้อมูลในเดือนนี้</p>";
-    return;
+    // สร้าง QR และ lock ตะกร้า
+    isLocked = true;
+    const qrUrl = `https://promptpay.io/${PROMPTPAY_NO}/${cart.amount}.png`;
+    document.getElementById("qrImg").src = qrUrl;
+    document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
+    document.getElementById("checkoutArea").classList.remove("hidden");
+    setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+  } catch (err) {
+    console.error("checkout error:", err);
+    Swal.fire("เกิดข้อผิดพลาด", "โปรดลองอีกครั้ง", "error");
   }
+};
 
-  data.forEach(tx => {
-    const color = tx.status === "approved"
-      ? "text-green-600"
-      : tx.status === "rejected"
-      ? "text-red-600"
-      : tx.status === "slip_uploaded"
-      ? "text-blue-600"
-      : "text-yellow-600";
-    const div = document.createElement("div");
-    div.className =
+/* ========== UPLOAD SLIP -> insert transaction -> send edge function ========== */
+document.getElementById("uploadSlipBtn").onclick = async () => {
+  try {
+    const fileInput = document.getElementById("slipFile");
+    if (!fileInput.files.length) return Swal.fire("กรุณาแนบสลิปก่อน", "", "info");
+
+    const file = fileInput.files[0];
+    // generate path name
+    const ext = file.name.split(".").pop().toLowerCase();
+    const fileName = `${profile.userId}_${Date.now()}.${ext}`;
+
+    // upload to bucket 'proofs'
+    const { error: uploadError } = await supabase.storage.from("proofs").upload(fileName, file, { cacheControl: '3600', upsert: false });
+    if (uploadError) {
+      console.error("upload error:", uploadError);
+      return Swal.fire("อัปโหลดผิดพลาด", uploadError.message || uploadError.error || "", "error");
+    }
+
+    const { data: urlData } = await supabase.storage.from("proofs").getPublicUrl(fileName);
+    const proofUrl = urlData.publicUrl;
+
+    // insert transaction as slip_uploaded (pending for approval)
+    const { data: tx, error: insertErr } = await supabase.from("transactions").insert({
+      line_user_id: profile.userId,
+      line_display_name: profile.displayName,
+      shares: cart.shares,
+      amount: cart.amount,
+      proof_url: proofUrl,
+      status: "slip_uploaded"
+    }).select().single();
+
+    if (insertErr) {
+      console.error("insert tx error:", insertErr);
+      return Swal.fire("บันทึกคำสั่งซื้อผิดพลาด", insertErr.message || "", "error");
+    }
+
+    // call edge function to send flex to user (mode: slip_uploaded)
+    try {
+      await fetch(FUNCTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: profile.userId,
+          memberName: profile.displayName,
+          amount: cart.amount,
+          proofUrl,
+          txId: tx.id,
+          mode: "slip_uploaded"
+        })
+      });
+    } catch (fnErr) {
+      console.warn("edge function call failed:", fnErr);
+      // not fatal for user; continue
+    }
+
+    Swal.fire("✅ ส่งสลิปเรียบร้อย", "เจ้าหน้าที่จะตรวจสอบและอนุมัติภายใน 24 ชม.", "success");
+    // ปิด LIFF ให้ผู้ใช้กลับไปที่แชท (เล็กน้อยหน่วงเพื่อให้เห็นข้อความ)
+    setTimeout(() => {
+      try { liff.closeWindow(); } catch(e){ /* ignore */ }
+    }, 1500);
+  } catch (err) {
+    console.error("uploadSlipBtn error:", err);
+    Swal.fire("เกิดข้อผิดพลาด", "ไม่สามารถส่งหลักฐานได้", "error");
+  }
+};
+
+/* ========== LOAD HISTORY by month ========== */
+document.getElementById("loadHistoryBtn").onclick = async () => {
+  try {
+    if (!profile || !profile.userId) return Swal.fire("กรุณาเข้าสู่ระบบก่อน", "", "warning");
+    const monthVal = document.getElementById("monthPicker").value;
+    if (!monthVal) return Swal.fire("กรุณาเลือกเดือนก่อน", "", "info");
+
+    const [year, month] = monthVal.split("-");
+    const start = new Date(year, month - 1, 1, 0, 0, 0).toISOString();
+    const end = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("shares, amount, status, created_at, proof_url")
+      .eq("line_user_id", profile.userId)
+      .gte("created_at", start)
+      .lte("created_at", end)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("history query error:", error);
+      return Swal.fire("เกิดข้อผิดพลาด", error.message || "", "error");
+    }
+
+    const list = document.getElementById("historyList");
+    list.innerHTML = "";
+    document.getElementById("historyArea").classList.remove("hidden");
+
+    if (!data || data.length === 0) {
+      list.innerHTML = "<p class='text-center text-gray-400'>ไม่พบข้อมูลในเดือนนี้</p>";
+      return;
+    }
+
+    data.forEach(tx => {
+      const color = tx.status === "approved"
+        ? "text-green-600"
+        : tx.status === "rejected"
+        ? "text-red-600"
+        : tx.status === "slip_uploaded"
+        ? "text-blue-600"
+        : "text-yellow-600";
+
+      const div = document.createElement("div");
+      div.className = "border rounded p-3";
+
+      div.innerHTML = `
+        <p class="text-sm text-gray-600">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+        <p><b>หุ้น:</b> ${tx.shares} หน่วย</p>
+        <p><b>ยอด:</b> ${Number(tx.amount).toLocaleString()} บาท</p>
+        <p class="${color}"><b>สถานะ:</b> ${tx.status}</p>
+        ${tx.proof_url ? `<p class="mt-2"><a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a></p>` : ""}
+      `;
+      list.appendChild(div);
+    });
+
+    Swal.fire("✅ โหลดสำเร็จ", `พบ ${data.length} รายการ`, "success");
+  } catch (err) {
+    console.error("loadHistoryBtn error:", err);
+    Swal.fire("เกิดข้อผิดพลาด", "ไม่สามารถโหลดประวัติได้", "error");
+  }
+};
+</script>
+</body>
+</html>
