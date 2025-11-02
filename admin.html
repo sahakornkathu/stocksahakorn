@@ -3,169 +3,171 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>สหกรณ์ | ผู้ดูแลระบบ</title>
+  <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    body { font-family: 'Prompt', sans-serif; background: #f9fafb; }
-    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-    .status { font-weight: 600; }
+    body {
+      font-family: 'Prompt', sans-serif;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .card {
+      background: var(--card-bg, white);
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+      padding: 20px;
+    }
+    [data-theme="dark"] {
+      --card-bg: #1f2937;
+      background-color: #111827;
+      color: #f9fafb;
+    }
+    [data-theme="light"] {
+      --card-bg: #ffffff;
+      background-color: #f9fafb;
+      color: #111827;
+    }
   </style>
 </head>
 
-<body class="min-h-screen">
-  <div class="max-w-5xl mx-auto p-6">
-    <h1 class="text-2xl font-bold text-center text-green-700 mb-6">🛠 ระบบจัดการคำสั่งซื้อหุ้น</h1>
-    <div id="txList" class="space-y-4"></div>
+<body class="min-h-screen flex flex-col items-center justify-center" data-theme="light">
+  <div class="w-full max-w-md p-4 space-y-4">
+    <h1 class="text-2xl font-bold text-center text-green-600">🛒 ระบบซื้อหุ้นสหกรณ์</h1>
+
+    <div id="memberInfo" class="card text-center">
+      <p class="font-semibold text-lg" id="memberName">กำลังโหลดข้อมูล...</p>
+      <p>ยอดยกมา: <span id="carryForward">0</span> บาท</p>
+      <p>ยอดซื้อปีนี้: <span id="purchaseYear">0</span> บาท</p>
+      <p class="text-lg font-bold text-green-600">ยอดสะสมรวม: <span id="totalAmount">0</span> บาท</p>
+    </div>
+
+    <div class="card space-y-3">
+      <label class="block font-semibold">💰 จำนวนเงินที่ต้องการซื้อ</label>
+      <input type="number" id="amount" placeholder="ระบุจำนวนเงิน" class="w-full border rounded px-3 py-2 text-center" min="100" step="100">
+
+      <div class="flex gap-2">
+        <button id="btnSubmit" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">💸 ชำระเงิน</button>
+        <button id="btnClear" class="flex-1 bg-gray-400 hover:bg-gray-500 text-white py-2 rounded">🧹 ล้าง</button>
+      </div>
+    </div>
+
+    <div class="card text-center">
+      <p class="text-sm text-gray-500">อัปโหลดสลิปโอนเงิน</p>
+      <input type="file" id="proof" accept="image/*" class="w-full mt-2">
+    </div>
+
+    <div class="text-center">
+      <button id="toggleTheme" class="text-sm text-blue-500 underline">เปลี่ยนโหมดมืด/สว่าง</button>
+    </div>
   </div>
 
-<script>
-/* ================= CONFIG ================= */
-const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // ใช้ service_role เท่านั้น
-const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
+  <script>
+    /* ========= CONFIG ========= */
+    const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
+    const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    let userProfile = null;
+    let darkMode = false;
 
-/* ================= LOAD TRANSACTIONS ================= */
-async function loadTransactions() {
-  const { data, error } = await supabase
-    .from("transactions")
-    .select(`
-      *,
-      members (
-        first_name,
-        last_name,
-        group_name
-      )
-    `)
-    .order("created_at", { ascending: false });
+    /* ========= INIT ========= */
+    async function init() {
+      await liff.init({ liffId: "1660910795" });
+      if (!liff.isLoggedIn()) liff.login();
 
-  if (error) {
-    console.error("❌ Load error:", error);
-    return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
-  }
+      userProfile = await liff.getProfile();
+      loadMember();
+    }
 
-  const list = document.getElementById("txList");
-  list.innerHTML = "";
+    /* ========= LOAD MEMBER ========= */
+    async function loadMember() {
+      const { data, error } = await supabase
+        .from("members")
+        .select("*")
+        .eq("line_user_id", userProfile.userId)
+        .single();
 
-  if (!data || data.length === 0) {
-    list.innerHTML = `<p class="text-center text-gray-400">ไม่มีข้อมูลคำสั่งซื้อ</p>`;
-    return;
-  }
+      if (error || !data) {
+        console.error("Load error:", error);
+        Swal.fire("ผิดพลาด", "ไม่พบข้อมูลสมาชิก", "error");
+        return;
+      }
 
-  data.forEach(tx => {
-    const div = document.createElement("div");
-    div.className = "card";
+      const member = data;
+      document.getElementById("memberName").innerText = `${member.first_name || ''} ${member.last_name || ''}`;
+      document.getElementById("carryForward").innerText = (member.carry_forward ?? 0).toLocaleString();
+      document.getElementById("purchaseYear").innerText = (member.purchase_year ?? 0).toLocaleString();
+      document.getElementById("totalAmount").innerText = (member.total_amount ?? 0).toLocaleString();
+    }
 
-    const statusColor = {
-      pending: "text-yellow-600",
-      slip_uploaded: "text-blue-600",
-      approved: "text-green-600",
-      rejected: "text-red-600"
-    }[tx.status] || "text-gray-600";
+    /* ========= SUBMIT ========= */
+    document.getElementById("btnSubmit").onclick = async () => {
+      const amount = parseFloat(document.getElementById("amount").value);
+      const proof = document.getElementById("proof").files[0];
 
-    div.innerHTML = `
-      <div class="flex justify-between items-center">
-        <div>
-          <p class="font-semibold text-lg">${tx.members?.first_name || ''} ${tx.members?.last_name || ''}</p>
-          <p class="text-sm text-gray-500">กลุ่ม: ${tx.members?.group_name || '-'}</p>
-          <p class="text-sm text-gray-500 mt-1">หุ้น: ${tx.shares} หน่วย • ยอด: ${Number(tx.amount).toLocaleString()} บาท</p>
-          <p class="${statusColor} status mt-1">สถานะ: ${tx.status}</p>
-          <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
-        </div>
+      if (!amount || amount < 100) {
+        return Swal.fire("แจ้งเตือน", "กรุณาระบุจำนวนเงินขั้นต่ำ 100 บาท", "warning");
+      }
+      if (!proof) {
+        return Swal.fire("แจ้งเตือน", "กรุณาอัปโหลดสลิปโอนเงิน", "warning");
+      }
 
-        <div class="flex flex-col gap-2">
-          ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
-          ${tx.status === "slip_uploaded" ? `
-            <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm" 
-              onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount})">✅ อนุมัติ</button>
-            <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm" 
-              onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount})">❌ ยกเลิก</button>
-          ` : ""}
-        </div>
-      </div>
-    `;
-    list.appendChild(div);
-  });
-}
+      Swal.fire({ title: "กำลังอัปโหลด...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-/* ================= APPROVE ================= */
-async function approveTx(id, userId, name, amount) {
-  const { isConfirmed } = await Swal.fire({
-    title: "ยืนยันการอนุมัติ?",
-    html: `<b>${name}</b><br>ยอด ${amount.toLocaleString()} บาท`,
-    icon: "question",
-    showCancelButton: true,
-    confirmButtonText: "อนุมัติ",
-    cancelButtonText: "ยกเลิก"
-  });
-  if (!isConfirmed) return;
+      const proofPath = `${userProfile.userId}/${Date.now()}_${proof.name}`;
+      const { data, error } = await supabase.storage.from("proofs").upload(proofPath, proof);
 
-  const { error } = await supabase
-    .from("transactions")
-    .update({ status: "approved" })
-    .eq("id", id);
+      if (error) {
+        Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+        return;
+      }
 
-  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+      const proofUrl = `${SUPABASE_URL}/storage/v1/object/public/proofs/${proofPath}`;
 
-  // ✅ ส่ง Flex
-  await fetch(FUNCTION_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userId,
-      memberName: name,
-      amount,
-      mode: "approved_success"
-    })
-  });
+      await supabase.from("transactions").insert([{
+        line_user_id: userProfile.userId,
+        line_display_name: userProfile.displayName,
+        amount,
+        proof_url: proofUrl,
+        status: "slip_uploaded"
+      }]);
 
-  Swal.fire("✅ สำเร็จ", "อนุมัติคำสั่งซื้อแล้ว", "success");
-  loadTransactions();
-}
+      await fetch(FUNCTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: userProfile.userId,
+          memberName: userProfile.displayName,
+          amount,
+          proofUrl,
+          mode: "slip_uploaded"
+        })
+      });
 
-/* ================= REJECT ================= */
-async function rejectTx(id, userId, name, amount) {
-  const { value: reason } = await Swal.fire({
-    title: "ยกเลิกรายการ?",
-    input: "text",
-    inputPlaceholder: "ระบุเหตุผล (ถ้ามี)",
-    showCancelButton: true,
-    confirmButtonText: "ยืนยัน",
-    cancelButtonText: "ยกเลิก"
-  });
-  if (reason === undefined) return;
+      Swal.fire("สำเร็จ", "ส่งสลิปเรียบร้อยแล้ว", "success").then(() => {
+        liff.closeWindow();
+      });
+    };
 
-  const { error } = await supabase
-    .from("transactions")
-    .update({ status: "rejected", reason })
-    .eq("id", id);
+    /* ========= CLEAR ========= */
+    document.getElementById("btnClear").onclick = () => {
+      document.getElementById("amount").value = "";
+      document.getElementById("proof").value = "";
+      Swal.fire("ล้างข้อมูลแล้ว", "", "info");
+    };
 
-  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+    /* ========= TOGGLE THEME ========= */
+    document.getElementById("toggleTheme").onclick = () => {
+      darkMode = !darkMode;
+      document.body.setAttribute("data-theme", darkMode ? "dark" : "light");
+    };
 
-  // ✅ ส่ง Flex
-  await fetch(FUNCTION_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userId,
-      memberName: name,
-      amount,
-      reason,
-      mode: "rejected_slip"
-    })
-  });
-
-  Swal.fire("❌ ยกเลิกแล้ว", "ระบบได้แจ้งผู้ใช้เรียบร้อย", "success");
-  loadTransactions();
-}
-
-/* ================= INIT ================= */
-loadTransactions();
-</script>
+    init();
+  </script>
 </body>
 </html>
