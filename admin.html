@@ -3,29 +3,39 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin - ตรวจคำสั่งซื้อ</title>
+  <title>สหกรณ์ | ผู้ดูแลระบบ</title>
 
+  <!-- ✅ Library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>body{font-family:Prompt, sans-serif;background:#f4f6f8}</style>
+
+  <style>
+    body { font-family: 'Prompt', sans-serif; background: #f9fafb; color: #111827; }
+    .card {
+      background: white; border-radius: 12px; padding: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+    .status { font-weight: 600; }
+  </style>
 </head>
-<body class="min-h-screen p-6">
-  <div class="max-w-5xl mx-auto">
-    <h1 class="text-2xl font-bold text-green-700 mb-4">🛠 คำสั่งซื้อหุ้น (Admin)</h1>
+
+<body class="min-h-screen">
+  <div class="max-w-5xl mx-auto p-6">
+    <h1 class="text-2xl font-bold text-center text-green-700 mb-6">🛠 ระบบจัดการคำสั่งซื้อหุ้น</h1>
     <div id="txList" class="space-y-4"></div>
   </div>
 
 <script>
-/* = CONFIG = */
+/* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
-const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-/* = END CONFIG = */
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 🔥 ต้องใช้ Service Role Key (มีสิทธิ์ update)
+const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 
-async function loadTransactions(){
-  // join members fields
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ================= โหลดคำสั่งซื้อทั้งหมด ================= */
+async function loadTransactions() {
   const { data, error } = await supabase
     .from("transactions")
     .select(`
@@ -33,91 +43,133 @@ async function loadTransactions(){
       members (
         first_name,
         last_name,
-        member_no,
         group_name
       )
     `)
     .order("created_at", { ascending: false });
 
-  if (error) return Swal.fire("ผิดพลาด", error.message, "error");
+  if (error) {
+    console.error("❌ Load error:", error);
+    return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+  }
 
-  const el = document.getElementById("txList");
-  el.innerHTML = "";
-  if (!data || data.length === 0) { el.innerHTML = `<p class="text-gray-500">ไม่มีคำสั่งซื้อ</p>`; return; }
+  const list = document.getElementById("txList");
+  list.innerHTML = "";
+
+  if (!data || data.length === 0) {
+    list.innerHTML = `<p class="text-center text-gray-400">ไม่มีข้อมูลคำสั่งซื้อ</p>`;
+    return;
+  }
 
   data.forEach(tx => {
-    const card = document.createElement("div");
-    card.className = "bg-white p-4 rounded-xl shadow flex justify-between items-start";
-    const left = document.createElement("div");
-    left.innerHTML = `
-      <div class="font-semibold">${tx.members?.first_name || '-'} ${tx.members?.last_name || ''}</div>
-      <div class="text-sm text-gray-500">เลขสมาชิก: ${tx.members?.member_no || '-'} • กลุ่ม: ${tx.members?.group_name || '-'}</div>
-      <div class="mt-2">หุ้น: ${tx.shares} • ยอด: ${Number(tx.amount).toLocaleString()} บาท</div>
-      <div class="text-xs text-gray-400 mt-1">เวลา: ${new Date(tx.created_at).toLocaleString()}</div>
+    const div = document.createElement("div");
+    div.className = "card";
+
+    const statusColor = {
+      pending: "text-yellow-600",
+      slip_uploaded: "text-blue-600",
+      approved: "text-green-600",
+      rejected: "text-red-600"
+    }[tx.status] || "text-gray-600";
+
+    div.innerHTML = `
+      <div class="flex justify-between items-start">
+        <div>
+          <p class="font-semibold text-lg">${tx.members?.first_name || ''} ${tx.members?.last_name || ''}</p>
+          <p class="text-sm text-gray-500">กลุ่ม: ${tx.members?.group_name || '-'}</p>
+          <p class="text-sm text-gray-500 mt-1">หุ้น: ${tx.shares} หน่วย • ยอด: ${Number(tx.amount).toLocaleString()} บาท</p>
+          <p class="${statusColor} status mt-1">สถานะ: ${tx.status}</p>
+          <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
+          ${tx.status === "slip_uploaded" ? `
+            <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+              onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount}, '${tx.proof_url || ''}')">✅ อนุมัติ</button>
+            <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+              onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount})">❌ ยกเลิก</button>
+          ` : ""}
+        </div>
+      </div>
     `;
-    const right = document.createElement("div");
-    right.className = "flex flex-col gap-2 items-end";
-    if (tx.proof_url) right.innerHTML += `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>`;
-    right.innerHTML += `<div class="text-sm font-medium mt-2 ${tx.status === 'approved' ? 'text-green-600' : tx.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}">สถานะ: ${tx.status}</div>`;
-
-    if (tx.status === "slip_uploaded" || tx.status === "pending") {
-      const btnApprove = document.createElement("button");
-      btnApprove.className = "bg-green-600 text-white px-3 py-1 rounded text-sm";
-      btnApprove.innerText = "✅ อนุมัติ";
-      btnApprove.onclick = () => approveTx(tx.id, tx.line_user_id, `${tx.members?.first_name || ''} ${tx.members?.last_name || ''}`, tx.amount);
-      const btnReject = document.createElement("button");
-      btnReject.className = "bg-red-600 text-white px-3 py-1 rounded text-sm";
-      btnReject.innerText = "❌ ยกเลิก";
-      btnReject.onclick = () => rejectTx(tx.id, tx.line_user_id, `${tx.members?.first_name || ''} ${tx.members?.last_name || ''}`, tx.amount);
-      right.appendChild(btnApprove);
-      right.appendChild(btnReject);
-    }
-
-    card.appendChild(left);
-    card.appendChild(right);
-    el.appendChild(card);
+    list.appendChild(div);
   });
 }
 
-async function approveTx(id, userId, name, amount){
-  const res = await Swal.fire({ title: "ยืนยันอนุมัติ?", html: `<b>${name}</b><br/>ยอด ${Number(amount).toLocaleString()} บาท`, icon: "question", showCancelButton:true });
-  if (!res.isConfirmed) return;
-  const { error } = await supabase.from("transactions").update({ status: "approved", approved_at: new Date().toISOString() }).eq("id", id);
-  if (error) return Swal.fire("ผิดพลาด", error.message, "error");
+/* ================= อนุมัติคำสั่งซื้อ ================= */
+async function approveTx(id, userId, name, amount, proofUrl) {
+  const { isConfirmed } = await Swal.fire({
+    title: "ยืนยันการอนุมัติ?",
+    html: `<b>${name}</b><br>ยอด ${Number(amount).toLocaleString()} บาท`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "อนุมัติ",
+    cancelButtonText: "ยกเลิก"
+  });
+  if (!isConfirmed) return;
 
-  // call edge function to notify user
-  try {
-    await fetch(FUNCTION_URL, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ userId, memberName: name, amount, mode: "approved_success", txId: id })
-    });
-  } catch (e) { console.warn("Edge call failed", e); }
+  const { error } = await supabase
+    .from("transactions")
+    .update({ status: "approved", approved_at: new Date().toISOString() })
+    .eq("id", id);
 
-  Swal.fire("อนุมัติแล้ว", "", "success");
+  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+
+  /* ✅ ส่ง Flex แจ้งอนุมัติ */
+  await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      memberName: name,
+      amount,
+      proofUrl,
+      mode: "approved_success"
+    })
+  });
+
+  Swal.fire("✅ สำเร็จ", "อนุมัติคำสั่งซื้อแล้ว", "success");
   loadTransactions();
 }
 
-async function rejectTx(id, userId, name, amount){
-  const { value: reason } = await Swal.fire({ title: "ยกเลิกคำสั่ง", input: "text", inputPlaceholder: "เหตุผล (ไม่บังคับ)", showCancelButton:true });
+/* ================= ยกเลิกคำสั่งซื้อ ================= */
+async function rejectTx(id, userId, name, amount) {
+  const { value: reason } = await Swal.fire({
+    title: "ยกเลิกรายการ?",
+    input: "text",
+    inputPlaceholder: "ระบุเหตุผล (ถ้ามี)",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก"
+  });
   if (reason === undefined) return;
-  const { error } = await supabase.from("transactions").update({ status: "rejected", reason }).eq("id", id);
-  if (error) return Swal.fire("ผิดพลาด", error.message, "error");
 
-  // notify
-  try {
-    await fetch(FUNCTION_URL, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ userId, memberName: name, amount, mode: "rejected_slip", reason, txId: id })
-    });
-  } catch (e) { console.warn("Edge call failed", e); }
+  const { error } = await supabase
+    .from("transactions")
+    .update({ status: "rejected", reason })
+    .eq("id", id);
 
-  Swal.fire("ยกเลิกแล้ว", "", "success");
+  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+
+  /* ✅ ส่ง Flex แจ้งยกเลิก */
+  await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      memberName: name,
+      amount,
+      reason,
+      mode: "rejected_slip"
+    })
+  });
+
+  Swal.fire("❌ ยกเลิกแล้ว", "ระบบได้แจ้งผู้ใช้เรียบร้อย", "success");
   loadTransactions();
 }
 
-// initial load
+/* ================= โหลดเมื่อเริ่ม ================= */
 loadTransactions();
 </script>
 </body>
