@@ -5,11 +5,20 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
-  <!-- Library -->
+  <!-- ✅ Library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+  <style>
+    body { font-family: 'Prompt', sans-serif; transition: background 0.3s, color 0.3s; }
+    .dark-mode { background: #0f172a; color: #f8fafc; }
+    .dark-mode .card { background: #1e293b; color: #f1f5f9; }
+    .tab-active { border-bottom: 3px solid #16a34a; color: #16a34a; font-weight: bold; }
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    .dark-mode input, .dark-mode select { background: #334155; color: #f1f5f9; border-color: #475569; }
+  </style>
 </head>
 
 <body class="bg-gray-50 min-h-screen text-gray-800">
@@ -21,15 +30,15 @@
 
     <!-- Tabs -->
     <div class="flex justify-center mb-4">
-      <button id="tabBuy" class="px-4 py-2 border-b-4 border-green-500 font-semibold">💰 ซื้อหุ้น</button>
-      <button id="tabHistory" class="px-4 py-2 text-gray-500">📜 ประวัติย้อนหลัง</button>
+      <button id="tabBuy" class="px-4 py-2 tab-active">💰 ซื้อหุ้น</button>
+      <button id="tabHistory" class="px-4 py-2">📜 ประวัติย้อนหลัง</button>
     </div>
 
     <p id="status" class="text-center text-gray-500 mb-4">กำลังเชื่อมต่อ...</p>
 
-    <!-- 🛒 ซื้อหุ้น -->
+    <!-- ================= TAB: ซื้อหุ้น ================= -->
     <div id="tabBuyContent">
-      <div id="memberInfo" class="hidden bg-white p-4 rounded-xl shadow mb-4">
+      <div id="memberInfo" class="hidden card mb-4">
         <p><b>ชื่อ:</b> <span id="memberName"></span></p>
         <p><b>เลขสมาชิก:</b> <span id="memberNo"></span></p>
         <p><b>กลุ่ม:</b> <span id="memberGroup"></span></p>
@@ -39,7 +48,7 @@
         <p><b>ยอดสะสมรวม:</b> <span id="totalAmount">0</span> บาท</p>
       </div>
 
-      <div id="buyArea" class="hidden bg-white p-4 rounded-xl shadow">
+      <div id="buyArea" class="hidden card">
         <h2 class="font-semibold mb-3">🛒 ซื้อหุ้น</h2>
         <div class="grid grid-cols-2 gap-3 mb-4" id="productGrid"></div>
         <div class="flex justify-between items-center">
@@ -52,7 +61,7 @@
         <button id="clearBtn" class="bg-gray-300 text-gray-800 w-full mt-3 py-2 rounded">🧹 ล้างตะกร้า</button>
       </div>
 
-      <div id="checkoutArea" class="hidden bg-white p-4 rounded-xl shadow mt-4">
+      <div id="checkoutArea" class="hidden card mt-4">
         <h3 class="font-semibold mb-2">📄 ใบแจ้งการชำระ</h3>
         <p id="txSummary" class="text-gray-600 mb-3"></p>
         <img id="qrImg" class="mx-auto mb-3 w-64 rounded-lg" alt="QR PromptPay" />
@@ -62,15 +71,15 @@
       </div>
     </div>
 
-    <!-- 📜 ประวัติย้อนหลัง -->
+    <!-- ================= TAB: ประวัติย้อนหลัง ================= -->
     <div id="tabHistoryContent" class="hidden">
-      <div class="bg-white p-4 rounded-xl shadow mb-4">
+      <div class="card mb-4">
         <h3 class="font-semibold mb-2">📅 เลือกเดือนเพื่อดูประวัติ</h3>
         <input type="month" id="monthPicker" class="border rounded p-2 w-full mb-3" />
         <button id="loadHistoryBtn" class="bg-green-600 text-white w-full py-2 rounded">🔍 ดูประวัติ</button>
       </div>
 
-      <div id="historyArea" class="bg-white p-4 rounded-xl shadow hidden">
+      <div id="historyArea" class="card hidden">
         <h3 class="font-semibold mb-2">📜 รายการซื้อหุ้น</h3>
         <div id="historyList" class="space-y-3"></div>
       </div>
@@ -78,19 +87,20 @@
   </div>
 
 <script>
+/* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
-const PROMPTPAY_NO = "0936494961";
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
-
+const PROMPTPAY_NO = "0936494961";
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let profile = null;
 let cart = { shares: 0, amount: 0 };
 
 /* 🌙 โหมดมืด */
 document.getElementById("toggleMode").onclick = () => {
-  document.body.classList.toggle("bg-gray-900");
-  document.body.classList.toggle("text-white");
+  document.body.classList.toggle("dark-mode");
+  document.getElementById("toggleMode").textContent =
+    document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
 };
 
 /* ================= INIT ================= */
@@ -106,7 +116,7 @@ init();
 /* ================= โหลดข้อมูลสมาชิก ================= */
 async function loadMember(userId) {
   const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
-  if (!member) return Swal.fire("ไม่พบข้อมูล", "กรุณาสมัครสมาชิกก่อน", "error");
+  if (!member) return Swal.fire("ไม่พบข้อมูลสมาชิก", "กรุณาสมัครสมาชิกก่อน", "error");
 
   document.getElementById("memberInfo").classList.remove("hidden");
   document.getElementById("buyArea").classList.remove("hidden");
@@ -147,7 +157,7 @@ document.getElementById("checkoutBtn").onclick = async () => {
   setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth" }), 300);
 };
 
-/* ================= อัปโหลดสลิป (proofs bucket) ================= */
+/* ================= อัปโหลดสลิป (Bucket: proofs) ================= */
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const fileInput = document.getElementById("slipFile");
   if (!fileInput.files.length) return Swal.fire("กรุณาแนบสลิปก่อน", "", "info");
@@ -169,6 +179,7 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
     status: "slip_uploaded"
   }).select().single();
 
+  // ✅ ส่ง Flex message แจ้งเตือนผู้ใช้
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -181,41 +192,67 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
     })
   });
 
-  Swal.fire("ส่งสลิปเรียบร้อย!", "เจ้าหน้าที่จะตรวจสอบภายใน 24 ชม.", "success");
+  Swal.fire("✅ ส่งสลิปเรียบร้อย", "เจ้าหน้าที่จะตรวจสอบภายใน 24 ชม.", "success");
   setTimeout(() => liff.closeWindow(), 1500);
 };
 
-/* ================= ดูประวัติย้อนหลัง ================= */
+/* ================= ประวัติย้อนหลัง ================= */
 document.getElementById("loadHistoryBtn").onclick = async () => {
-  if (!profile) return Swal.fire("กรุณาเข้าสู่ระบบก่อน", "", "warning");
+  if (!profile || !profile.userId) return Swal.fire("กรุณาเข้าสู่ระบบก่อน", "", "warning");
+
   const monthVal = document.getElementById("monthPicker").value;
   if (!monthVal) return Swal.fire("กรุณาเลือกเดือนก่อน", "", "info");
 
   const [year, month] = monthVal.split("-");
-  const start = new Date(year, month - 1, 1).toISOString();
-  const end = new Date(year, month, 0).toISOString();
-  const { data } = await supabase.from("transactions")
-    .select("*").eq("line_user_id", profile.userId)
-    .gte("created_at", start).lte("created_at", end)
+  const start = new Date(year, month - 1, 1, 0, 0, 0).toISOString();
+  const end = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id, shares, amount, status, created_at, proof_url")
+    .eq("line_user_id", profile.userId)
+    .gte("created_at", start)
+    .lte("created_at", end)
     .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("❌ Query Error:", error);
+    return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+  }
 
   const list = document.getElementById("historyList");
   const area = document.getElementById("historyArea");
-  area.classList.remove("hidden");
   list.innerHTML = "";
-  if (!data || data.length === 0) return list.innerHTML = "<p class='text-gray-400 text-center'>ไม่พบข้อมูล</p>";
+  area.classList.remove("hidden");
+
+  if (!data || data.length === 0) {
+    list.innerHTML = "<p class='text-gray-400 text-center'>ไม่พบข้อมูลในเดือนนี้</p>";
+    return;
+  }
 
   data.forEach(tx => {
-    const color = tx.status === "approved" ? "text-green-600" : tx.status === "rejected" ? "text-red-600" : "text-yellow-600";
+    const color =
+      tx.status === "approved"
+        ? "text-green-600"
+        : tx.status === "rejected"
+        ? "text-red-600"
+        : tx.status === "slip_uploaded"
+        ? "text-blue-600"
+        : "text-yellow-600";
+
     const div = document.createElement("div");
-    div.className = "border rounded p-2";
+    div.className = "border rounded p-3";
     div.innerHTML = `
+      <p><b>วันที่:</b> ${new Date(tx.created_at).toLocaleString("th-TH")}</p>
       <p><b>หุ้น:</b> ${tx.shares} หน่วย</p>
       <p><b>ยอด:</b> ${Number(tx.amount).toLocaleString()} บาท</p>
       <p class="${color}"><b>สถานะ:</b> ${tx.status}</p>
-      <p class="text-gray-500 text-sm">${new Date(tx.created_at).toLocaleString("th-TH")}</p>`;
+      ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
+    `;
     list.appendChild(div);
   });
+
+  Swal.fire("✅ โหลดสำเร็จ", `พบ ${data.length} รายการ`, "success");
 };
 </script>
 </body>
