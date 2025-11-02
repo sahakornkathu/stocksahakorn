@@ -19,7 +19,7 @@
     .tab-active { border-bottom: 3px solid #16a34a; color: #16a34a; font-weight: bold; }
     .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
 
-    /* ✅ ปรับ input ในโหมดมืด */
+    /* ✅ Input */
     input, select, textarea {
       background: white;
       color: #111827;
@@ -102,7 +102,9 @@
 
       <div id="historyArea" class="card hidden">
         <h3 class="font-semibold mb-2">📜 รายการซื้อหุ้น</h3>
-        <div id="historyList" class="space-y-2"></div>
+        <div id="historyList" class="space-y-3"></div>
+        <hr class="my-3">
+        <p class="font-bold text-right text-green-600">รวมทั้งหมด: <span id="totalHistory">0</span> บาท</p>
       </div>
     </div>
 
@@ -121,7 +123,6 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const LIFF_ID = "1660910795-4w2rdGn6";
 const PROMPTPAY_NO = "0936494961";
 const MAX_MONTHLY_LIMIT = 20000;
-const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let profile = null;
@@ -149,9 +150,8 @@ function switchTab(tab) {
   });
   document.getElementById(`tab${tab.charAt(0).toUpperCase()+tab.slice(1)}`).classList.add("tab-active");
   document.getElementById(`tab${tab.charAt(0).toUpperCase()+tab.slice(1)}Content`).classList.remove("hidden");
-
   if (tab === "yearly") loadYearlySummary();
-  if (tab === "history") isLocked = true; // ✅ ล็อกเมื่อดูประวัติ
+  if (tab === "history") isLocked = true;
 }
 
 /* ================= INIT ================= */
@@ -165,7 +165,7 @@ async function init() {
 }
 init();
 
-/* ================= MEMBER INFO ================= */
+/* ================= MEMBER ================= */
 async function loadMember(userId) {
   const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
   if (!member) return Swal.fire("ไม่พบข้อมูลสมาชิก", "กรุณาสมัครสมาชิกก่อน", "error");
@@ -208,7 +208,6 @@ const productGrid = document.getElementById("productGrid");
   div.onclick = () => addShare(s);
   productGrid.appendChild(div);
 });
-
 function addShare(count) {
   if (isLocked) {
     Swal.fire("ไม่สามารถซื้อเพิ่มได้", "คุณได้เปิดดูประวัติย้อนหลังแล้ว กรุณารอเดือนถัดไป", "warning");
@@ -235,6 +234,48 @@ document.getElementById("checkoutBtn").onclick = async () => {
   document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
   document.getElementById("checkoutArea").classList.remove("hidden");
   setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+};
+
+/* ================= โหลดประวัติย้อนหลัง ================= */
+document.getElementById("loadHistoryBtn").onclick = async () => {
+  const monthVal = document.getElementById("monthPicker").value;
+  if (!monthVal) return Swal.fire("กรุณาเลือกเดือนก่อน", "", "info");
+  const [year, month] = monthVal.split("-");
+  const start = new Date(year, month - 1, 1).toISOString();
+  const end = new Date(year, month, 0).toISOString();
+  const { data } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("line_user_id", profile.userId)
+    .gte("created_at", start)
+    .lte("created_at", end)
+    .order("created_at", { ascending: false });
+
+  const list = document.getElementById("historyList");
+  const area = document.getElementById("historyArea");
+  list.innerHTML = "";
+  area.classList.remove("hidden");
+  if (!data || data.length === 0) {
+    list.innerHTML = "<p class='text-center text-gray-400'>ไม่พบข้อมูลในเดือนนี้</p>";
+    document.getElementById("totalHistory").innerText = "0";
+    return;
+  }
+
+  let total = 0;
+  data.forEach(tx => {
+    const color = tx.status === "approved" ? "text-green-600" : tx.status === "rejected" ? "text-red-600" : "text-yellow-600";
+    const div = document.createElement("div");
+    div.className = "border rounded p-2";
+    div.innerHTML = `
+      <p><b>หุ้น:</b> ${tx.shares} หน่วย</p>
+      <p><b>ยอด:</b> ${Number(tx.amount).toLocaleString()} บาท</p>
+      <p class="${color}"><b>สถานะ:</b> ${tx.status}</p>
+      <p class="text-gray-500 text-sm">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+    `;
+    list.appendChild(div);
+    if (tx.status === "approved") total += Number(tx.amount);
+  });
+  document.getElementById("totalHistory").innerText = total.toLocaleString();
 };
 
 /* ================= กราฟรายปี ================= */
