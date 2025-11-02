@@ -12,11 +12,9 @@
 
   <style>
     body { font-family: 'Prompt', sans-serif; background: #f9fafb; color: #111827; }
-    .card {
-      background: white; border-radius: 12px; padding: 16px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    }
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
     .status { font-weight: 600; }
+    button { transition: 0.2s ease; }
   </style>
 </head>
 
@@ -29,7 +27,7 @@
 <script>
 /* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 🔥 ต้องใช้ Service Role Key (มีสิทธิ์ update)
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 🔥 ต้องใช้ service_role key
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -38,14 +36,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 async function loadTransactions() {
   const { data, error } = await supabase
     .from("transactions")
-    .select(`
-      *,
-      members (
-        first_name,
-        last_name,
-        group_name
-      )
-    `)
+    .select("*")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -61,40 +52,54 @@ async function loadTransactions() {
     return;
   }
 
-  data.forEach(tx => {
-    const div = document.createElement("div");
-    div.className = "card";
+  for (const tx of data) {
+    // 🔹 ดึงข้อมูลสมาชิก
+    const { data: member } = await supabase
+      .from("members")
+      .select("first_name,last_name,group_name")
+      .eq("line_user_id", tx.line_user_id)
+      .single();
+
+    const name = member ? `${member.first_name || ""} ${member.last_name || ""}`.trim() : "ไม่พบชื่อ";
+    const group = member?.group_name || "-";
 
     const statusColor = {
       pending: "text-yellow-600",
       slip_uploaded: "text-blue-600",
       approved: "text-green-600",
-      rejected: "text-red-600"
+      rejected: "text-red-600",
     }[tx.status] || "text-gray-600";
+
+    const div = document.createElement("div");
+    div.className = "card";
 
     div.innerHTML = `
       <div class="flex justify-between items-start">
         <div>
-          <p class="font-semibold text-lg">${tx.members?.first_name || ''} ${tx.members?.last_name || ''}</p>
-          <p class="text-sm text-gray-500">กลุ่ม: ${tx.members?.group_name || '-'}</p>
+          <p class="font-semibold text-lg">${name}</p>
+          <p class="text-sm text-gray-500">กลุ่ม: ${group}</p>
           <p class="text-sm text-gray-500 mt-1">หุ้น: ${tx.shares} หน่วย • ยอด: ${Number(tx.amount).toLocaleString()} บาท</p>
           <p class="${statusColor} status mt-1">สถานะ: ${tx.status}</p>
           <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
         </div>
-
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-2 items-end">
           ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
-          ${tx.status === "slip_uploaded" ? `
-            <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-              onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount}, '${tx.proof_url || ''}')">✅ อนุมัติ</button>
-            <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-              onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name || ''} ${tx.members?.last_name || ''}', ${tx.amount})">❌ ยกเลิก</button>
-          ` : ""}
+          ${
+            tx.status === "slip_uploaded"
+              ? `
+              <button class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+                onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${name}', ${tx.amount}, '${tx.proof_url || ""}')">✅ อนุมัติ</button>
+              <button class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+                onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${name}', ${tx.amount})">❌ ยกเลิก</button>
+              `
+              : ""
+          }
         </div>
       </div>
     `;
+
     list.appendChild(div);
-  });
+  }
 }
 
 /* ================= อนุมัติคำสั่งซื้อ ================= */
@@ -105,7 +110,7 @@ async function approveTx(id, userId, name, amount, proofUrl) {
     icon: "question",
     showCancelButton: true,
     confirmButtonText: "อนุมัติ",
-    cancelButtonText: "ยกเลิก"
+    cancelButtonText: "ยกเลิก",
   });
   if (!isConfirmed) return;
 
@@ -116,7 +121,7 @@ async function approveTx(id, userId, name, amount, proofUrl) {
 
   if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
 
-  /* ✅ ส่ง Flex แจ้งอนุมัติ */
+  // ✅ ส่ง Flex แจ้งอนุมัติ
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -125,8 +130,8 @@ async function approveTx(id, userId, name, amount, proofUrl) {
       memberName: name,
       amount,
       proofUrl,
-      mode: "approved_success"
-    })
+      mode: "approved_success",
+    }),
   });
 
   Swal.fire("✅ สำเร็จ", "อนุมัติคำสั่งซื้อแล้ว", "success");
@@ -141,7 +146,7 @@ async function rejectTx(id, userId, name, amount) {
     inputPlaceholder: "ระบุเหตุผล (ถ้ามี)",
     showCancelButton: true,
     confirmButtonText: "ยืนยัน",
-    cancelButtonText: "ยกเลิก"
+    cancelButtonText: "ยกเลิก",
   });
   if (reason === undefined) return;
 
@@ -152,7 +157,7 @@ async function rejectTx(id, userId, name, amount) {
 
   if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
 
-  /* ✅ ส่ง Flex แจ้งยกเลิก */
+  // ✅ ส่ง Flex แจ้งยกเลิก
   await fetch(FUNCTION_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -161,8 +166,8 @@ async function rejectTx(id, userId, name, amount) {
       memberName: name,
       amount,
       reason,
-      mode: "rejected_slip"
-    })
+      mode: "rejected_slip",
+    }),
   });
 
   Swal.fire("❌ ยกเลิกแล้ว", "ระบบได้แจ้งผู้ใช้เรียบร้อย", "success");
