@@ -7,7 +7,155 @@
 
   <!-- ✅ Libraries -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>สหกรณ์ | หน้าผู้ดูแลระบบ</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-5xl mx-auto p-6">
+    <h1 class="text-2xl font-bold text-center text-green-700 mb-6">🛠 ระบบจัดการคำสั่งซื้อหุ้น</h1>
+
+    <div id="txList" class="space-y-4"></div>
+  </div>
+
+<script>
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // ใช้ service_role เพื่อ bypass RLS
+const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ================= LOAD TRANSACTIONS ================= */
+async function loadTransactions() {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*, members:first_name, members:last_name, members:group_name")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+  }
+
+  const list = document.getElementById("txList");
+  list.innerHTML = "";
+
+  data.forEach(tx => {
+    const div = document.createElement("div");
+    div.className = "bg-white p-4 rounded-xl shadow";
+
+    const statusColor = {
+      pending: "text-yellow-600",
+      slip_uploaded: "text-blue-600",
+      approved: "text-green-600",
+      rejected: "text-red-600"
+    }[tx.status] || "text-gray-500";
+
+    div.innerHTML = `
+      <div class="flex justify-between items-center">
+        <div>
+          <p class="font-semibold">${tx.line_display_name}</p>
+          <p class="text-sm text-gray-500">${tx.shares} หุ้น • ${tx.amount.toLocaleString()} บาท</p>
+          <p class="${statusColor} font-medium mt-1">สถานะ: ${tx.status}</p>
+          <p class="text-xs text-gray-400">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+        </div>
+        <div class="flex flex-col gap-2">
+          ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline text-sm">📷 ดูสลิป</a>` : ""}
+          ${tx.status === "slip_uploaded" ? `
+            <button class="bg-green-600 text-white px-3 py-1 rounded text-sm" onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.line_display_name}', ${tx.amount})">✅ อนุมัติ</button>
+            <button class="bg-red-600 text-white px-3 py-1 rounded text-sm" onclick="rejectTx('${tx.id}', '${tx.line_user_id}', '${tx.line_display_name}', ${tx.amount})">❌ ยกเลิก</button>
+          ` : ""}
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+/* ================= APPROVE ================= */
+async function approveTx(id, userId, name, amount) {
+  const { isConfirmed } = await Swal.fire({
+    title: "อนุมัติคำสั่งซื้อ?",
+    html: `<b>${name}</b><br>ยอด ${amount.toLocaleString()} บาท`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "อนุมัติ",
+    cancelButtonText: "ยกเลิก"
+  });
+  if (!isConfirmed) return;
+
+  const { error } = await supabase
+    .from("transactions")
+    .update({ status: "approved" })
+    .eq("id", id);
+
+  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+
+  // ✅ ส่ง Flex ไปยังผู้ใช้
+  await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      memberName: name,
+      amount,
+      mode: "approved_success"
+    })
+  });
+
+  Swal.fire("✅ สำเร็จ", "อนุมัติคำสั่งซื้อแล้ว", "success");
+  loadTransactions();
+}
+
+/* ================= REJECT ================= */
+async function rejectTx(id, userId, name, amount) {
+  const { value: reason } = await Swal.fire({
+    title: "ยกเลิกรายการ?",
+    input: "text",
+    inputPlaceholder: "ระบุเหตุผล (ถ้ามี)",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน",
+    cancelButtonText: "ยกเลิก"
+  });
+  if (reason === undefined) return;
+
+  const { error } = await supabase
+    .from("transactions")
+    .update({ status: "rejected", reason })
+    .eq("id", id);
+
+  if (error) return Swal.fire("เกิดข้อผิดพลาด", error.message, "error");
+
+  // ✅ ส่ง Flex ไปยังผู้ใช้
+  await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      memberName: name,
+      amount,
+      reason,
+      mode: "rejected_slip"
+    })
+  });
+
+  Swal.fire("❌ ยกเลิกแล้ว", "ระบบได้แจ้งผู้ใช้เรียบร้อย", "success");
+  loadTransactions();
+}
+
+/* ================= INIT ================= */
+loadTransactions();
+</script>
+</body>
+</html>
+/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 
