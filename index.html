@@ -78,26 +78,17 @@ const txId = urlParams.get("txId");
 async function init() {
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) return liff.login();
-
   profile = await liff.getProfile();
   document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
-
-  if (txId) {
-    showTransactionDetail(txId);
-  } else {
-    loadMember(profile.userId);
-  }
+  if (txId) showTransactionDetail(txId);
+  else loadMember(profile.userId);
 }
 init();
 
 /* ================= MEMBER INFO ================= */
 async function loadMember(userId) {
   const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
-
-  if (!member) {
-    document.getElementById("status").innerText = "❌ ไม่พบข้อมูลสมาชิกในระบบ";
-    return;
-  }
+  if (!member) return (document.getElementById("status").innerText = "❌ ไม่พบข้อมูลสมาชิก");
 
   document.getElementById("memberInfo").classList.remove("hidden");
   document.getElementById("buyArea").classList.remove("hidden");
@@ -113,7 +104,6 @@ async function loadMember(userId) {
 const SHARE_PRICE = 10;
 const MIN_TOTAL = 100;
 const MAX_TOTAL = 20000;
-
 const productGrid = document.getElementById("productGrid");
 [10, 50, 100, 500, 1000].forEach(s => {
   const div = document.createElement("div");
@@ -122,7 +112,6 @@ const productGrid = document.getElementById("productGrid");
   div.onclick = () => addShare(s);
   productGrid.appendChild(div);
 });
-
 function addShare(count) {
   cart.shares += count;
   cart.amount = cart.shares * SHARE_PRICE;
@@ -134,7 +123,6 @@ function addShare(count) {
 document.getElementById("checkoutBtn").onclick = async () => {
   if (cart.amount < MIN_TOTAL) return alert(`ขั้นต่ำ ${MIN_TOTAL} บาท`);
   if (cart.amount > MAX_TOTAL) return alert(`สูงสุดต่อเดือน ${MAX_TOTAL} บาท`);
-
   const { data, error } = await supabase.from("transactions").insert([{
     line_user_id: profile.userId,
     line_display_name: profile.displayName,
@@ -142,11 +130,9 @@ document.getElementById("checkoutBtn").onclick = async () => {
     amount: cart.amount,
     status: "pending"
   }]).select().single();
-
   if (error) return alert(error.message);
   currentTxId = data.id;
   lastOrder = { shares: cart.shares, amount: cart.amount };
-
   const qrUrl = `https://promptpay.io/${PROMPTPAY_NO}/${cart.amount}.png`;
   document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
   document.getElementById("qrImg").src = qrUrl;
@@ -158,15 +144,12 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
   const file = document.getElementById("slipFile").files[0];
   if (!file) return alert("กรุณาเลือกไฟล์ก่อน");
   document.getElementById("uploadMsg").innerText = "กำลังอัปโหลด...";
-
   const ext = file.name.split(".").pop();
   const path = `${profile.userId}_${Date.now()}.${ext}`;
   const { error: uploadError } = await supabase.storage.from("proofs").upload(path, file);
   if (uploadError) return alert(uploadError.message);
-
   const { data: publicUrl } = supabase.storage.from("proofs").getPublicUrl(path);
   await supabase.from("transactions").update({ proof_url: publicUrl.publicUrl }).eq("id", currentTxId);
-
   document.getElementById("uploadMsg").innerText = "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบ";
 
   // ✅ ส่ง Flex Message พร้อมรูปสลิปจริง
@@ -177,33 +160,11 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
       userId: profile.userId,
       memberName: profile.displayName,
       amount: lastOrder.amount,
-      proofUrl: publicUrl.publicUrl, // ✅ สำคัญมาก
+      proofUrl: publicUrl.publicUrl,
       mode: "slip_uploaded"
     })
   });
 };
-
-/* ================= TRANSACTION DETAIL ================= */
-async function showTransactionDetail(txId) {
-  const { data: tx } = await supabase.from("transactions").select("*").eq("id", txId).single();
-  if (!tx) return (document.getElementById("status").innerText = "❌ ไม่พบข้อมูลคำสั่งซื้อ");
-
-  const { data: member } = await supabase.from("members").select("*").eq("line_user_id", tx.line_user_id).single();
-
-  document.getElementById("detailArea").classList.remove("hidden");
-  document.getElementById("detailArea").innerHTML = `
-    <h2 class="text-xl font-bold mb-2 text-center">📄 รายละเอียดคำสั่งซื้อ</h2>
-    <p><b>ชื่อ:</b> ${member.first_name} ${member.last_name}</p>
-    <p><b>เลขสมาชิก:</b> ${member.member_no}</p>
-    <p><b>กลุ่ม:</b> ${member.group_name}</p>
-    <hr class="my-2">
-    <p><b>จำนวนหุ้น:</b> ${tx.shares} หุ้น</p>
-    <p><b>ยอดเงิน:</b> ${tx.amount.toLocaleString()} บาท</p>
-    <p><b>สถานะ:</b> ${tx.status === "approved" ? "✅ อนุมัติแล้ว" : "⌛ รอตรวจสอบ"}</p>
-    ${tx.proof_url ? `<img src="${tx.proof_url}" class="mt-3 w-full rounded-lg" />` : ""}
-    <button class="bg-green-600 text-white mt-4 px-4 py-2 rounded w-full" onclick="window.location.href='https://liff.line.me/${LIFF_ID}'">🏠 กลับหน้าหลัก</button>
-  `;
-}
 </script>
 </body>
 </html>
