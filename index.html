@@ -49,12 +49,12 @@
 
 <script>
 /* ================= CONFIG ================= */
-const LIFF_ID = "1660910795-4w2rdGn6"; // 👉 ใส่ LIFF ID
-const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co"; // 👉 ใส่ URL Supabase
+const LIFF_ID = "1660910795-4w2rdGn6"; // 👉 LIFF ID
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co"; // 👉 URL Supabase
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 👉 anon key
 const PAYEE_PHONE = "0812345678"; // 👉 เบอร์ PromptPay
-const STORAGE_BUCKET = "proofs"; // 👉 ชื่อ bucket Supabase
-const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // 👉 URL Function
+const STORAGE_BUCKET = "proofs"; // 👉 bucket name
+const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // 👉 Edge Function
 const SHARE_PRICE = 10; // หุ้นละ 10 บาท
 const MIN_TOTAL = 100; // ขั้นต่ำ 100 บาท
 const MAX_MONTHLY_APPROVED = 20000; // สูงสุดต่อเดือน
@@ -64,6 +64,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let profile = null;
 let cart = { shares: 0, amount: 0 };
 let currentTxId = null;
+let lastOrder = { shares: 0, amount: 0 };
 
 /* ✅ เริ่มต้น LIFF */
 async function init() {
@@ -74,7 +75,7 @@ async function init() {
 }
 init();
 
-/* ✅ แสดง Card หุ้น */
+/* ✅ สินค้าแบบ Card */
 const productOptions = [
   { shares: 10, label: "หุ้น 10 หน่วย", desc: "100 บาท" },
   { shares: 50, label: "หุ้น 50 หน่วย", desc: "500 บาท" },
@@ -102,7 +103,7 @@ grid.addEventListener("click", e => {
   }
 });
 
-/* ✅ Render Cart */
+/* ✅ แสดงตะกร้า */
 function renderCart() {
   const list = document.getElementById("cartList");
   if (cart.shares === 0) list.innerText = "ตะกร้าว่าง";
@@ -110,7 +111,7 @@ function renderCart() {
   document.getElementById("cartTotal").innerText = `${cart.amount.toLocaleString()} บาท`;
 }
 
-/* ✅ Checkout */
+/* ✅ ชำระเงิน */
 document.getElementById("checkoutBtn").addEventListener("click", async () => {
   if (!profile) return alert("กรุณาเปิดผ่าน LINE");
   if (cart.amount < MIN_TOTAL) return alert(`ยอดขั้นต่ำ ${MIN_TOTAL} บาท`);
@@ -126,9 +127,13 @@ document.getElementById("checkoutBtn").addEventListener("click", async () => {
   if (error) return alert("Error: " + error.message);
   currentTxId = data.id;
 
+  // ✅ เก็บข้อมูลล่าสุดไว้
+  lastOrder = { shares: cart.shares, amount: cart.amount };
+
   // ✅ แสดง QR PromptPay
   const qrUrl = `https://promptpay.io/${PAYEE_PHONE}/${cart.amount}.png`;
-  document.getElementById("txInfo").innerText = `จำนวน ${cart.shares} หุ้น | ยอด ${cart.amount.toLocaleString()} บาท`;
+  document.getElementById("txInfo").innerText = 
+    `จำนวน ${cart.shares} หุ้น | ยอด ${cart.amount.toLocaleString()} บาท`;
   document.getElementById("qrImg").src = qrUrl;
   document.getElementById("checkoutArea").classList.remove("hidden");
 
@@ -157,14 +162,14 @@ document.getElementById("uploadSlipBtn").addEventListener("click", async () => {
 
     document.getElementById("uploadMsg").innerText = "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบจากเจ้าหน้าที่";
 
-    // ✅ ส่ง Flex Message เฉพาะตอนส่งหลักฐาน
+    // ✅ ส่ง Flex Message (หลังอัปโหลดเสร็จ)
     const resp = await fetch(FUNCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId: profile.userId,
-        shares: cart.shares,
-        amount: cart.amount,
+        shares: lastOrder.shares,
+        amount: lastOrder.amount,
         memberName: profile.displayName,
         txId: currentTxId,
         mode: "slip_uploaded"
