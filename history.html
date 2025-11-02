@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ประวัติซื้อหุ้น</title>
+
+  <!-- Library -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Prompt', sans-serif; background: #f9fafb; color: #111827; }
+    .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center py-6">
+  <div class="w-full max-w-md space-y-4">
+    <h1 class="text-2xl font-bold text-green-700 text-center">📜 ประวัติการซื้อหุ้น</h1>
+    <p id="status" class="text-center text-gray-500 mb-3">กำลังโหลดข้อมูล...</p>
+
+    <div id="historyList" class="space-y-3 w-full"></div>
+  </div>
+
+<script>
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // ใช้ anon key เท่านั้น
+const LIFF_ID = "1660910795-4w2rdGn6";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+/* ========================================== */
+
+let profile = null;
+
+async function init() {
+  await liff.init({ liffId: LIFF_ID });
+  if (!liff.isLoggedIn()) return liff.login();
+  profile = await liff.getProfile();
+  document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
+  loadHistory(profile.userId);
+}
+init();
+
+async function loadHistory(userId) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("line_user_id", userId)
+    .order("created_at", { ascending: false });
+
+  const list = document.getElementById("historyList");
+  list.innerHTML = "";
+
+  if (error) {
+    console.error(error);
+    document.getElementById("status").innerText = "❌ ไม่สามารถโหลดข้อมูลได้";
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    document.getElementById("status").innerText = "ไม่มีรายการคำสั่งซื้อ";
+    return;
+  }
+
+  document.getElementById("status").classList.add("hidden");
+
+  data.forEach(tx => {
+    const div = document.createElement("div");
+    div.className = "card flex justify-between items-start";
+
+    const statusMap = {
+      pending: { text: "รอชำระเงิน", color: "text-yellow-600", icon: "🕒" },
+      slip_uploaded: { text: "รอตรวจสอบสลิป", color: "text-blue-600", icon: "📤" },
+      approved: { text: "อนุมัติแล้ว", color: "text-green-600", icon: "✅" },
+      rejected: { text: "ยกเลิก", color: "text-red-600", icon: "❌" }
+    };
+    const s = statusMap[tx.status] || { text: "ไม่ทราบสถานะ", color: "text-gray-500", icon: "⚪" };
+
+    div.innerHTML = `
+      <div>
+        <p class="font-semibold">หุ้น ${tx.shares} หน่วย</p>
+        <p>ยอดเงิน: ${Number(tx.amount).toLocaleString()} บาท</p>
+        <p class="${s.color} mt-1">${s.icon} ${s.text}</p>
+        <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+      </div>
+      <div class="flex flex-col items-end">
+        ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-500 underline text-sm">📷 ดูสลิป</a>` : ""}
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+</script>
+</body>
+</html>
