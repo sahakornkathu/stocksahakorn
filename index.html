@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ซื้อหุ้น - สหกรณ์</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-xl mx-auto p-6">
+    <div class="bg-white p-6 rounded-2xl shadow">
+      <h1 class="text-2xl font-bold mb-2">ซื้อหุ้นกับสหกรณ์</h1>
+      <p id="greeting" class="text-sm text-gray-600 mb-4">กำลังเชื่อมต่อกับ LINE...</p>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1">จำนวนหุ้นที่ต้องการซื้อ</label>
+        <input id="sharesInput" type="number" min="1" value="1" class="w-full border rounded p-2" />
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1">ราคาต่อหุ้น (บาท)</label>
+        <input id="priceInput" type="number" min="1" value="10" class="w-full border rounded p-2" />
+      </div>
+
+      <div class="mb-4">
+        <button id="generateBtn" class="bg-green-500 text-white px-4 py-2 rounded">สร้างใบแจ้งและ QR</button>
+      </div>
+
+      <div id="receiptCard" class="hidden border rounded p-4 bg-gray-50">
+        <h2 class="font-semibold mb-2">ใบแจ้งการชำระ</h2>
+        <p id="receiptText" class="mb-2"></p>
+        <img id="qrImage" alt="PromptPay QR" class="mx-auto mb-2 max-h-48"/>
+        <p class="text-sm text-gray-500 mb-2">เมื่อโอนเสร็จ ให้กดปุ่มอัปโหลดหลักฐาน (รูปใบโอน)</p>
+        <input id="proofFile" type="file" accept="image/*" class="mb-2" />
+        <div>
+          <button id="uploadBtn" class="bg-blue-600 text-white px-4 py-2 rounded mr-2">อัปโหลดหลักฐานและส่ง</button>
+          <button id="cancelBtn" class="bg-gray-300 px-3 py-2 rounded">ยกเลิก</button>
+        </div>
+        <p id="statusText" class="text-sm mt-2"></p>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ====== CONFIGURE THIS SECTION ======
+   เติมค่าเหล่านี้ก่อน deploy:
+*/
+const LIFF_ID = "1660910795-4w2rdGn6"; // ใส่ LIFF ID ของคุณ
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
+const PAYEE_PHONE = "0936494961"; // หมายเลข PromptPay ของสหกรณ์ (ตัวอย่าง)
+const SHARE_PRICE_DEFAULT = 10; // ค่าเริ่มต้นราคาต่อหุ้น (บาท)
+const STORAGE_BUCKET = "proofs"; // ชื่อ bucket ใน Supabase
+/* =================================== */
+
+const supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let liffUserProfile = null;
+
+async function init() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) {
+      liff.login(); // ถ้าไม่ได้ login จะเรียกหน้า LINE login
+      return;
+    }
+    liffUserProfile = await liff.getProfile();
+    document.getElementById('greeting').innerText = `สวัสดี ${liffUserProfile.displayName} — สั่งซื้อหุ้นได้เลย`;
+    document.getElementById('priceInput').value = SHARE_PRICE_DEFAULT;
+  } catch (err) {
+    console.error("LIFF init error", err);
+    document.getElementById('greeting').innerText = "ไม่สามารถเชื่อมต่อกับ LIFF ได้";
+  }
+}
+
+function formatCurrency(n){
+  return n.toLocaleString('th-TH') + " ฿";
+}
+
+function buildPromptPayQRUrl(phone, amount) {
+  // ใช้ promptpay.io แบบง่าย (จะคืนเป็น .png)
+  // รูปแบบ: https://promptpay.io/<phone>/<amount>.png
+  // amount เป็นจำนวนเต็มหรือทศนิยมตามที่ต้องการ
+  const cleanPhone = phone.replace(/\D/g,'');
+  const amt = Number(amount).toFixed(2);
+  return `https://promptpay.io/${cleanPhone}/${amt}.png`;
+}
+
+document.getElementById('generateBtn').addEventListener('click', () => {
+  const shares = Number(document.getElementById('sharesInput').value) || 0;
+  const price = Number(document.getElementById('priceInput').value) || SHARE_PRICE_DEFAULT;
+  if (shares <= 0) { alert('กรุณากรอกจำนวนหุ้นอย่างน้อย 1'); return; }
+  const amount = shares * price;
+  document.getElementById('receiptText').innerText = `จำนวน: ${shares} หุ้น — ยอดชำระ: ${formatCurrency(amount)}`;
+  document.getElementById('qrImage').src = buildPromptPayQRUrl(PAYEE_PHONE, amount);
+  document.getElementById('receiptCard').classList.remove('hidden');
+  document.getElementById('statusText').innerText = '';
+});
+
+document.getElementById('cancelBtn').addEventListener('click', () => {
+  document.getElementById('receiptCard').classList.add('hidden');
+});
+
+document.getElementById('uploadBtn').addEventListener('click', async () => {
+  const fileInput = document.getElementById('proofFile');
+  if (!fileInput.files || fileInput.files.length === 0) {
+    alert('กรุณาเลือกไฟล์รูปหลักฐานการโอน');
+    return;
+  }
+  const file = fileInput.files[0];
+
+  // ข้อมูล transaction
+  const shares = Number(document.getElementById('sharesInput').value) || 0;
+  const price = Number(document.getElementById('priceInput').value) || SHARE_PRICE_DEFAULT;
+  const amount = shares * price;
+  const userId = liffUserProfile ? liffUserProfile.userId : null;
+  const userName = liffUserProfile ? liffUserProfile.displayName : null;
+
+  // สถานะ UI
+  document.getElementById('statusText').innerText = 'กำลังอัปโหลดรูป...';
+  document.getElementById('uploadBtn').disabled = true;
+
+  try {
+    // 1) upload file to Supabase Storage
+    const fileExt = file.name.split('.').pop();
+    const timestamp = new Date().toISOString().replace(/[:.]/g,'-');
+    const filePath = `proofs/${userId}_${timestamp}.${fileExt}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+
+    // 2) get public URL (if bucket public) or create signed URL (if private)
+    // ถ้า bucket public:
+    const { data: publicUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+    let proofUrl = publicUrlData.publicUrl;
+
+    // ถ้าคุณใช้ private bucket และอยากได้ signed url ให้ใช้:
+    // const { data: signed } = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 60*60);
+    // proofUrl = signed.signedUrl;
+
+    // 3) insert transaction row
+    const tx = {
+      line_user_id: userId,
+      line_display_name: userName,
+      shares: shares,
+      amount: amount,
+      proof_url: proofUrl,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    const { data: insertData, error: insertError } = await supabase
+      .from('transactions')
+      .insert([tx]);
+
+    if (insertError) throw insertError;
+
+    document.getElementById('statusText').innerText = 'ส่งหลักฐานเรียบร้อย รอการตรวจสอบจากแอดมิน';
+    // ปิดการกดหลายครั้ง
+    document.getElementById('uploadBtn').disabled = false;
+    document.getElementById('proofFile').value = '';
+    // ซ่อนหรือเปลี่ยน UI ตามต้องการ
+    // optionally close LIFF window
+    // liff.closeWindow();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('statusText').innerText = 'เกิดข้อผิดพลาด: ' + (err.message || JSON.stringify(err));
+    document.getElementById('uploadBtn').disabled = false;
+  }
+});
+
+// init when loaded
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
