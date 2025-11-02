@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>สหกรณ์ | ผู้ดูแลระบบ</title>
+
+  <!-- ✅ Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
+  <!-- ✅ Tailwind -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-5xl mx-auto p-4">
+    <h1 class="text-2xl font-bold text-center mb-6">🧑‍💼 ระบบผู้ดูแลสหกรณ์</h1>
+
+    <div class="bg-white p-4 rounded-xl shadow mb-4 flex justify-between items-center">
+      <h2 class="text-lg font-semibold">📋 รายการคำสั่งซื้อหุ้น</h2>
+      <button id="refreshBtn" class="bg-blue-600 text-white px-3 py-1 rounded">🔄 โหลดใหม่</button>
+    </div>
+
+    <!-- ตารางคำสั่งซื้อ -->
+    <div class="overflow-x-auto bg-white p-4 rounded-xl shadow">
+      <table class="w-full text-sm text-left border">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="p-2 border">ชื่อสมาชิก</th>
+            <th class="p-2 border">ยอดเงิน</th>
+            <th class="p-2 border">วันที่</th>
+            <th class="p-2 border">สถานะ</th>
+            <th class="p-2 border text-center">หลักฐาน</th>
+            <th class="p-2 border text-center">ดำเนินการ</th>
+          </tr>
+        </thead>
+        <tbody id="txTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
+const FUNCTION_URL = "YOUR_FUNCTION_URL"; // Edge Function สำหรับส่ง Flex Message
+/* ========================================== */
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ================= โหลดข้อมูลทั้งหมด ================= */
+async function loadTransactions() {
+  const tableBody = document.getElementById("txTableBody");
+  tableBody.innerHTML = `<tr><td colspan="6" class="text-center p-3 text-gray-500">กำลังโหลด...</td></tr>`;
+
+  const { data: transactions, error } = await supabase
+    .from("transactions")
+    .select("*, members:first_name, members:last_name")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 p-3">โหลดข้อมูลล้มเหลว</td></tr>`;
+    return;
+  }
+
+  if (!transactions || transactions.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="6" class="text-center p-3 text-gray-500">ยังไม่มีคำสั่งซื้อ</td></tr>`;
+    return;
+  }
+
+  tableBody.innerHTML = transactions.map(tx => `
+    <tr class="border-b hover:bg-gray-50">
+      <td class="p-2 border">
+        ${tx.line_display_name || '-'}
+      </td>
+      <td class="p-2 border">${Number(tx.amount).toLocaleString()} บาท</td>
+      <td class="p-2 border">${new Date(tx.created_at).toLocaleDateString("th-TH")}</td>
+      <td class="p-2 border">${tx.status === 'approved' ? '✅ อนุมัติแล้ว' : '⌛ รอตรวจสอบ'}</td>
+      <td class="p-2 border text-center">
+        ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline">ดูสลิป</a>` : '-'}
+      </td>
+      <td class="p-2 border text-center">
+        ${
+          tx.status !== 'approved'
+          ? `<button class="bg-green-600 text-white px-2 py-1 rounded" onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.line_display_name}', ${tx.amount})">อนุมัติ</button>`
+          : `<span class="text-gray-500">✔️</span>`
+        }
+      </td>
+    </tr>
+  `).join("");
+}
+
+/* ================= อนุมัติคำสั่งซื้อ ================= */
+async function approveTx(txId, userId, name, amount) {
+  if (!confirm(`ยืนยันการอนุมัติคำสั่งซื้อของ ${name}?`)) return;
+
+  // ✅ อัปเดตในฐานข้อมูล
+  const { error } = await supabase
+    .from("transactions")
+    .update({ status: "approved", approved_at: new Date().toISOString() })
+    .eq("id", txId);
+
+  if (error) {
+    alert("เกิดข้อผิดพลาด: " + error.message);
+    return;
+  }
+
+  // ✅ ส่ง Flex Message แจ้งสมาชิก
+  await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: userId,
+      memberName: name,
+      amount: amount,
+      mode: "approved_success"
+    }),
+  });
+
+  alert("✅ อนุมัติสำเร็จ และส่งแจ้งสมาชิกเรียบร้อย");
+  loadTransactions();
+}
+
+/* ================= Event ================= */
+document.getElementById("refreshBtn").addEventListener("click", loadTransactions);
+loadTransactions();
+</script>
+</body>
+</html>
