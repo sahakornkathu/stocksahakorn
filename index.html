@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
-  <!-- ✅ Library -->
+  <!-- ✅ Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
 
   <style>
     body { font-family: 'Prompt', sans-serif; transition: background 0.3s, color 0.3s; }
@@ -36,7 +36,7 @@
 
     <p id="status" class="text-center text-gray-500 mb-4">กำลังเชื่อมต่อ...</p>
 
-    <!-- ================= TAB: ซื้อหุ้น ================= -->
+    <!-- ========== TAB: ซื้อหุ้น ========== -->
     <div id="tabBuyContent">
       <div id="memberInfo" class="hidden card mb-4">
         <p><b>ชื่อ:</b> <span id="memberName"></span></p>
@@ -71,14 +71,13 @@
       </div>
     </div>
 
-    <!-- ================= TAB: ประวัติย้อนหลัง ================= -->
+    <!-- ========== TAB: ประวัติย้อนหลัง ========== -->
     <div id="tabHistoryContent" class="hidden">
       <div class="card mb-4">
         <h3 class="font-semibold mb-2">📅 เลือกเดือนเพื่อดูประวัติ</h3>
         <input type="month" id="monthPicker" class="border rounded p-2 w-full mb-3" />
         <button id="loadHistoryBtn" class="bg-green-600 text-white w-full py-2 rounded">🔍 ดูประวัติ</button>
       </div>
-
       <div id="historyArea" class="card hidden">
         <h3 class="font-semibold mb-2">📜 รายการซื้อหุ้น</h3>
         <div id="historyList" class="space-y-3"></div>
@@ -95,6 +94,7 @@ const PROMPTPAY_NO = "0936494961";
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let profile = null;
 let cart = { shares: 0, amount: 0 };
+let isLocked = false; // 🔒 ล็อกเมื่อกดชำระแล้ว
 
 /* 🌙 โหมดมืด */
 document.getElementById("toggleMode").onclick = () => {
@@ -103,7 +103,7 @@ document.getElementById("toggleMode").onclick = () => {
     document.body.classList.contains("dark-mode") ? "☀️" : "🌙";
 };
 
-/* ================= สลับแท็บ ================= */
+/* ========== สลับแท็บ ========== */
 const tabBuy = document.getElementById("tabBuy");
 const tabHistory = document.getElementById("tabHistory");
 const tabBuyContent = document.getElementById("tabBuyContent");
@@ -123,7 +123,7 @@ tabHistory.onclick = () => {
   tabHistoryContent.classList.remove("hidden");
 };
 
-/* ================= INIT ================= */
+/* ========== INIT ========== */
 async function init() {
   await liff.init({ liffId: "1660910795-4w2rdGn6" });
   if (!liff.isLoggedIn()) return liff.login();
@@ -133,7 +133,7 @@ async function init() {
 }
 init();
 
-/* ================= โหลดข้อมูลสมาชิก ================= */
+/* ========== โหลดข้อมูลสมาชิก ========== */
 async function loadMember(userId) {
   const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
   if (!member) return Swal.fire("ไม่พบข้อมูลสมาชิก", "กรุณาสมัครสมาชิกก่อน", "error");
@@ -148,38 +148,49 @@ async function loadMember(userId) {
   document.getElementById("totalAmount").innerText = member.total_amount.toLocaleString();
 }
 
-/* ================= ตะกร้า ================= */
+/* ========== ตะกร้า ========== */
 const SHARE_PRICE = 10;
+const productGrid = document.getElementById("productGrid");
 [10, 50, 100, 500].forEach(s => {
   const div = document.createElement("div");
   div.className = "border p-3 rounded-xl text-center hover:shadow cursor-pointer";
-  div.innerHTML = `<p class="font-semibold">${s} หน่วย</p><p class="text-sm text-gray-500">${(s*SHARE_PRICE).toLocaleString()} บาท</p>`;
+  div.innerHTML = `<p class="font-semibold">${s} หน่วย</p><p class="text-sm text-gray-500">${(s * SHARE_PRICE).toLocaleString()} บาท</p>`;
   div.onclick = () => {
+    if (isLocked) return Swal.fire("🚫 ไม่สามารถเพิ่มหุ้นได้", "กรุณาล้างตะกร้าก่อนทำรายการใหม่", "warning");
     cart.shares += s;
     cart.amount = cart.shares * SHARE_PRICE;
     document.getElementById("shareCount").innerText = cart.shares;
     document.getElementById("totalPrice").innerText = cart.amount.toLocaleString();
   };
-  document.getElementById("productGrid").appendChild(div);
+  productGrid.appendChild(div);
 });
 
+/* 🧹 ล้างตะกร้า */
 document.getElementById("clearBtn").onclick = () => {
   cart = { shares: 0, amount: 0 };
+  isLocked = false;
   document.getElementById("shareCount").innerText = "0";
   document.getElementById("totalPrice").innerText = "0";
+  document.getElementById("checkoutArea").classList.add("hidden");
+  document.getElementById("qrImg").src = "";
+  document.getElementById("txSummary").innerText = "";
+  Swal.fire("✅ ล้างตะกร้าแล้ว", "คุณสามารถเลือกซื้อใหม่ได้", "success");
 };
 
-/* ================= ชำระเงิน ================= */
+/* ========== ชำระเงิน ========== */
 document.getElementById("checkoutBtn").onclick = async () => {
   if (cart.amount < 100) return Swal.fire("ขั้นต่ำ 100 บาท", "", "warning");
+  if (cart.amount > 20000) return Swal.fire("สูงสุด 20,000 บาทต่อเดือน", "", "warning");
+
+  isLocked = true;
   const qrUrl = `https://promptpay.io/${PROMPTPAY_NO}/${cart.amount}.png`;
   document.getElementById("qrImg").src = qrUrl;
   document.getElementById("txSummary").innerText = `จำนวน ${cart.shares} หุ้น (${cart.amount.toLocaleString()} บาท)`;
   document.getElementById("checkoutArea").classList.remove("hidden");
-  setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth" }), 300);
+  setTimeout(() => document.getElementById("qrImg").scrollIntoView({ behavior: "smooth", block: "center" }), 300);
 };
 
-/* ================= อัปโหลดสลิป ================= */
+/* ========== อัปโหลดสลิป (proofs) ========== */
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const fileInput = document.getElementById("slipFile");
   if (!fileInput.files.length) return Swal.fire("กรุณาแนบสลิปก่อน", "", "info");
@@ -217,7 +228,7 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
   setTimeout(() => liff.closeWindow(), 1500);
 };
 
-/* ================= ประวัติย้อนหลัง ================= */
+/* ========== ประวัติย้อนหลัง ========== */
 document.getElementById("loadHistoryBtn").onclick = async () => {
   if (!profile || !profile.userId) return Swal.fire("กรุณาเข้าสู่ระบบก่อน", "", "warning");
 
@@ -276,6 +287,5 @@ document.getElementById("loadHistoryBtn").onclick = async () => {
   Swal.fire("✅ โหลดสำเร็จ", `พบ ${data.length} รายการ`, "success");
 };
 </script>
-
 </body>
 </html>
