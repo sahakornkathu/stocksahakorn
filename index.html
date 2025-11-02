@@ -1,95 +1,134 @@
 <!doctype html>
 <html lang="th">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ซื้อหุ้นกับสหกรณ์</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- ✅ โหลด Supabase SDK (UMD build เวอร์ชัน 2.x) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
+
+  <!-- ✅ โหลด LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+  <!-- ✅ Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
 </head>
+
 <body class="bg-gray-50 min-h-screen">
   <div class="max-w-md mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-3">ซื้อหุ้นกับสหกรณ์</h1>
-    <p id="greeting" class="text-gray-600 mb-4">กำลังเชื่อมต่อกับ LINE...</p>
+    <h1 class="text-2xl font-bold mb-3 text-center">ซื้อหุ้นกับสหกรณ์</h1>
+    <p id="greeting" class="text-gray-600 mb-4 text-center">กำลังเชื่อมต่อกับ LINE...</p>
 
     <div class="bg-white p-4 rounded-xl shadow">
-      <label class="block text-sm mb-2">จำนวนหุ้น</label>
-      <input id="sharesInput" type="number" min="1" value="1" class="border w-full p-2 rounded mb-4">
+      <label class="block text-sm mb-2">จำนวนหุ้นที่ต้องการซื้อ</label>
+      <input id="sharesInput" type="number" min="1" value="1" class="border w-full p-2 rounded mb-4" />
 
       <label class="block text-sm mb-2">ราคาต่อหุ้น (บาท)</label>
-      <input id="priceInput" type="number" value="10" class="border w-full p-2 rounded mb-4">
+      <input id="priceInput" type="number" value="10" class="border w-full p-2 rounded mb-4" />
 
       <button id="genBtn" class="bg-green-600 text-white w-full p-2 rounded">สร้างใบแจ้งและ QR</button>
 
       <div id="resultBox" class="hidden mt-4">
-        <p id="receiptText" class="font-medium mb-2"></p>
-        <img id="qrImage" class="w-64 mx-auto mb-2" alt="PromptPay QR">
-        <input id="proofFile" type="file" accept="image/*" class="mb-2 w-full">
-        <button id="uploadBtn" class="bg-blue-600 text-white w-full p-2 rounded">อัปโหลดหลักฐาน</button>
-        <p id="statusText" class="text-sm mt-2"></p>
+        <p id="receiptText" class="font-medium mb-2 text-center"></p>
+        <img id="qrImage" class="w-64 mx-auto mb-2 rounded" alt="PromptPay QR" />
+        <p class="text-sm text-gray-600 text-center">เมื่อโอนเงินเสร็จ กรุณาอัปโหลดหลักฐาน</p>
+        <input id="proofFile" type="file" accept="image/*" class="mb-2 w-full" />
+        <button id="uploadBtn" class="bg-blue-600 text-white w-full p-2 rounded">📤 อัปโหลดหลักฐาน</button>
+        <p id="statusText" class="text-sm mt-2 text-center"></p>
       </div>
     </div>
   </div>
 
 <script>
-/* ---------------- CONFIG ---------------- */
-const LIFF_ID = "1660910795-4w2rdGn6";
-const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
-const PAYEE_PHONE = "0936494961"; // เบอร์ PromptPay
-const SHARE_PRICE = 10;
-const STORAGE_BUCKET = "proofs";
-/* ---------------------------------------- */
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/* ====================== CONFIG ====================== */
+const LIFF_ID = "1660910795-4w2rdGn6"; // 👈 ใส่ LIFF ID ของคุณ
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co"; // 👈 URL โปรเจ็กต์ Supabase
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 👈 คีย์ anon
+const PAYEE_PHONE = "0812345678"; // 👈 เบอร์ PromptPay ของสหกรณ์
+const SHARE_PRICE = 10; // ราคาหุ้นต่อหน่วย
+const STORAGE_BUCKET = "proofs"; // ชื่อ bucket เก็บใบเสร็จ
+/* ==================================================== */
 
+/* ✅ สร้าง client จาก SDK ที่โหลดไว้ใน window */
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let profile = null;
 
+/* ✅ เริ่มต้น LIFF */
 async function init() {
-  await liff.init({ liffId: LIFF_ID });
-  if (!liff.isLoggedIn()) return liff.login();
-  profile = await liff.getProfile();
-  document.getElementById("greeting").innerText = `สวัสดี ${profile.displayName}`;
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) return liff.login();
+    profile = await liff.getProfile();
+    document.getElementById("greeting").innerText = `สวัสดี ${profile.displayName}`;
+  } catch (err) {
+    document.getElementById("greeting").innerText = "❌ เชื่อมต่อกับ LINE ไม่สำเร็จ";
+    console.error(err);
+  }
 }
 init();
 
+/* ✅ สร้าง QR เมื่อกดปุ่ม */
 document.getElementById("genBtn").addEventListener("click", () => {
   const shares = +document.getElementById("sharesInput").value;
   const price = +document.getElementById("priceInput").value;
+  if (!shares || shares <= 0) return alert("กรุณากรอกจำนวนหุ้นให้ถูกต้อง");
   const amount = shares * price;
   const qrUrl = `https://promptpay.io/${PAYEE_PHONE}/${amount}.png`;
-  document.getElementById("receiptText").innerText = `ยอดโอน ${amount.toLocaleString()} บาท (${shares} หุ้น)`;
+  document.getElementById("receiptText").innerText =
+    `ยอดโอน ${amount.toLocaleString()} บาท (${shares} หุ้น)`;
   document.getElementById("qrImage").src = qrUrl;
   document.getElementById("resultBox").classList.remove("hidden");
 });
 
+/* ✅ เมื่ออัปโหลดหลักฐาน */
 document.getElementById("uploadBtn").addEventListener("click", async () => {
   const file = document.getElementById("proofFile").files[0];
-  if (!file) return alert("เลือกไฟล์ก่อน");
+  if (!file) return alert("กรุณาเลือกไฟล์รูปก่อน");
   const shares = +document.getElementById("sharesInput").value;
   const amount = shares * SHARE_PRICE;
   const userId = profile.userId;
+  const displayName = profile.displayName;
 
-  document.getElementById("statusText").innerText = "กำลังอัปโหลด...";
-  const path = `proofs/${userId}_${Date.now()}.${file.name.split('.').pop()}`;
-  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file);
-  if (error) return alert(error.message);
-
-  const { data: url } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-
-  const { error: insertError } = await supabase.from("transactions").insert([{
-    line_user_id: userId,
-    line_display_name: profile.displayName,
-    shares,
-    amount,
-    proof_url: url.publicUrl,
-    status: "pending"
-  }]);
-
-  if (insertError) return alert(insertError.message);
-
-  document.getElementById("statusText").innerText = "✅ ส่งหลักฐานสำเร็จ รอตรวจสอบจากแอดมิน";
+  document.getElementById("statusText").innerText = "⏳ กำลังอัปโหลด...";
   document.getElementById("uploadBtn").disabled = true;
+
+  try {
+    // 1️⃣ Upload รูปไป Supabase Storage
+    const ext = file.name.split(".").pop();
+    const path = `${userId}_${Date.now()}.${ext}`;
+    const { data: uploadData, error: uploadError } = await supabaseClient
+      .storage.from(STORAGE_BUCKET)
+      .upload(path, file);
+
+    if (uploadError) throw uploadError;
+
+    // 2️⃣ ดึง URL ของรูป
+    const { data: publicData } = supabaseClient
+      .storage.from(STORAGE_BUCKET)
+      .getPublicUrl(path);
+    const proofUrl = publicData.publicUrl;
+
+    // 3️⃣ บันทึกข้อมูลธุรกรรม
+    const { error: insertError } = await supabaseClient.from("transactions").insert([{
+      line_user_id: userId,
+      line_display_name: displayName,
+      shares,
+      amount,
+      proof_url: proofUrl,
+      status: "pending"
+    }]);
+    if (insertError) throw insertError;
+
+    // 4️⃣ แจ้งผล
+    document.getElementById("statusText").innerText =
+      "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบจากแอดมิน";
+  } catch (err) {
+    console.error(err);
+    document.getElementById("statusText").innerText = "❌ เกิดข้อผิดพลาด: " + err.message;
+  } finally {
+    document.getElementById("uploadBtn").disabled = false;
+  }
 });
 </script>
 </body>
