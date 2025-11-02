@@ -3,148 +3,335 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ซื้อหุ้นกับสหกรณ์</title>
+  <title>ซื้อหุ้นสหกรณ์</title>
 
-  <!-- Supabase SDK -->
+  <!-- Supabase UMD -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
-  <!-- LIFF SDK -->
+  <!-- LIFF -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <!-- Tailwind -->
+  <!-- Tailwind (quick) -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
 </head>
-
 <body class="bg-gray-50 min-h-screen">
-  <div class="max-w-md mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-3 text-center">ซื้อหุ้นกับสหกรณ์</h1>
-    <p id="greeting" class="text-gray-600 mb-4 text-center">กำลังเชื่อมต่อกับ LINE...</p>
+  <div class="max-w-xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4 text-center">ซื้อหุ้นกับสหกรณ์</h1>
+    <p id="greeting" class="text-center text-gray-600 mb-4">กำลังเชื่อมต่อกับ LINE...</p>
 
-    <div class="bg-white p-4 rounded-xl shadow">
-      <label class="block text-sm mb-2">จำนวนหุ้นที่ต้องการซื้อ</label>
-      <input id="sharesInput" type="number" min="1" value="1" class="border w-full p-2 rounded mb-4" />
-
-      <label class="block text-sm mb-2">ราคาต่อหุ้น (บาท)</label>
-      <input id="priceInput" type="number" value="10" class="border w-full p-2 rounded mb-4" />
-
-      <button id="genBtn" class="bg-green-600 text-white w-full p-2 rounded">สร้างใบแจ้งและส่งไป LINE</button>
-
-      <div id="resultBox" class="hidden mt-4">
-        <p id="receiptText" class="font-medium mb-2 text-center"></p>
-        <img id="qrImage" class="w-64 mx-auto mb-2 rounded" alt="PromptPay QR" />
-        <p class="text-sm text-gray-600 text-center">หลังโอนแล้วให้อัปโหลดหลักฐาน</p>
-        <input id="proofFile" type="file" accept="image/*" class="mb-2 w-full" />
-        <button id="uploadBtn" class="bg-blue-600 text-white w-full p-2 rounded">📤 อัปโหลดหลักฐาน</button>
-        <p id="statusText" class="text-sm mt-2 text-center"></p>
+    <!-- Product / Cart -->
+    <div class="bg-white p-4 rounded-xl shadow mb-4">
+      <div class="mb-3">
+        <label class="block text-sm mb-1">ราคาต่อหุ้น (บาท)</label>
+        <input id="priceInput" type="number" value="10" class="border p-2 rounded w-full" readonly />
       </div>
+
+      <div class="mb-3">
+        <label class="block text-sm mb-1">จำนวนหุ้นที่ต้องการเพิ่มในตะกร้า</label>
+        <input id="qtyInput" type="number" min="1" value="1" class="border p-2 rounded w-full" />
+      </div>
+
+      <div class="flex gap-2">
+        <button id="addBtn" class="flex-1 bg-blue-600 text-white p-2 rounded">เพิ่มลงตะกร้า</button>
+        <button id="clearBtn" class="bg-gray-300 p-2 rounded">ล้างตะกร้า</button>
+      </div>
+    </div>
+
+    <!-- Cart -->
+    <div class="bg-white p-4 rounded-xl shadow mb-4">
+      <h2 class="font-semibold mb-2">ตะกร้าของคุณ</h2>
+      <div id="cartList" class="text-sm text-gray-700 mb-3">ตะกร้าว่าง</div>
+      <div class="flex justify-between items-center">
+        <div>
+          <div class="text-sm">ยอดรวม</div>
+          <div id="cartTotal" class="text-lg font-medium">0 ฿</div>
+        </div>
+        <div class="text-right">
+          <div class="text-sm">ขั้นต่ำ 100 ฿ / เดือนสูงสุดอนุมัติ 20,000 ฿</div>
+          <button id="checkoutBtn" class="bg-green-600 text-white p-2 rounded mt-2">ชำระและส่งสลิป (Checkout)</button>
+        </div>
+      </div>
+      <p id="cartMsg" class="text-sm text-red-600 mt-2"></p>
+    </div>
+
+    <!-- After checkout: QR + Upload -->
+    <div id="checkoutArea" class="hidden bg-white p-4 rounded-xl shadow">
+      <h3 class="font-semibold mb-2">ใบแจ้งการชำระ</h3>
+      <p id="txInfo" class="text-sm text-gray-700 mb-2"></p>
+      <img id="qrImg" class="mx-auto mb-3" alt="PromptPay QR" />
+      <label class="block text-sm mb-1">อัปโหลดสลิปการโอน</label>
+      <input id="slipFile" type="file" accept="image/*" class="mb-2 w-full" />
+      <div class="flex gap-2">
+        <button id="uploadSlipBtn" class="bg-blue-600 text-white p-2 rounded flex-1">อัปโหลดสลิป</button>
+        <button id="doneBtn" class="bg-gray-300 p-2 rounded">เสร็จ</button>
+      </div>
+      <p id="uploadMsg" class="text-sm mt-2"></p>
     </div>
   </div>
 
 <script>
-/* ================= CONFIG ================= */
-const LIFF_ID = "1660910795-4w2rdGn6"; // 👈 LIFF ID
-const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co"; // 👈 Supabase URL
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // 👈 anon key
-const PAYEE_PHONE = "0936494961"; // 👈 เบอร์ PromptPay
-const SHARE_PRICE = 10; // ราคาหุ้นต่อหน่วย
-const STORAGE_BUCKET = "proofs"; // ชื่อ bucket Supabase
-const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // 👈 URL Edge Function
-/* ========================================== */
+/* ========== CONFIG (เปลี่ยนก่อนใช้งาน) ========== */
+const LIFF_ID = "1660910795-4w2rdGn6";
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
+const PAYEE_PHONE = "0812345678"; // PromptPay number (ไม่มี +)
+const STORAGE_BUCKET = "proofs"; // Supabase storage bucket
+const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // Edge Function
+const MIN_TOTAL_BAHT = 100; // ขั้นต่ำ 100 บาท
+const MAX_MONTHLY_APPROVED_BAHT = 20000; // ปริมาณสูงสุดต่อเดือน (อ้างอิงจาก approved)
+/* =============================================== */
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 let profile = null;
+let cart = { shares: 0, amount: 0 }; // simple cart (only shares)
+let currentTxId = null; // เก็บ tx id หลัง checkout
 
-/* ✅ เริ่มต้น LIFF */
+// Init LIFF + get profile
 async function init() {
   try {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) return liff.login();
     profile = await liff.getProfile();
-    document.getElementById("greeting").innerText = `สวัสดี ${profile.displayName}`;
-  } catch (err) {
-    document.getElementById("greeting").innerText = "❌ เชื่อมต่อกับ LINE ไม่สำเร็จ";
-    console.error(err);
+    document.getElementById('greeting').innerText = `สวัสดี ${profile.displayName}`;
+  } catch (e) {
+    console.error(e);
+    document.getElementById('greeting').innerText = 'ไม่สามารถเชื่อมต่อ LINE ได้';
   }
 }
 init();
 
-/* ✅ เมื่อกด "สร้างใบแจ้งและส่งไป LINE" */
-document.getElementById("genBtn").addEventListener("click", async () => {
-  const shares = +document.getElementById("sharesInput").value;
-  const price = +document.getElementById("priceInput").value;
-  if (!shares || shares <= 0) return alert("กรุณากรอกจำนวนหุ้นให้ถูกต้อง");
-  const amount = shares * price;
-  const qrUrl = `https://promptpay.io/${PAYEE_PHONE}/${amount}.png`;
+// Helpers
+function formatBaht(n){
+  // careful digit-by-digit: ensure integer arithmetic
+  return Number(n).toLocaleString('th-TH', {maximumFractionDigits: 2}) + " ฿";
+}
 
-  // แสดง QR ในหน้า LIFF
-  document.getElementById("receiptText").innerText =
-    `ยอดโอน ${amount.toLocaleString()} บาท (${shares} หุ้น)`;
-  document.getElementById("qrImage").src = qrUrl;
-  document.getElementById("resultBox").classList.remove("hidden");
+// compute month boundaries in client local timezone (Asia/Bangkok)
+function monthBoundsNow() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0,0);
+  const next = new Date(now.getFullYear(), now.getMonth()+1, 1, 0,0,0,0);
+  return { startIso: start.toISOString(), endIso: next.toISOString() };
+}
 
-  // ✅ เรียก Edge Function เพื่อส่ง Flex Message มี QR ใน LINE
+// Load approved sum for this user for current month
+async function fetchApprovedSumThisMonth() {
+  if (!profile) return 0;
+  const { startIso, endIso } = monthBoundsNow();
   try {
-    const res = await fetch(FUNCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: profile.userId,
-        shares,
-        amount
-      })
-    });
-    const text = await res.text();
-    console.log("ส่ง Flex แจ้งคำสั่งซื้อ:", res.status, text);
-    if (res.ok) alert("✅ ส่งใบแจ้งการสั่งซื้อไปที่แชท LINE แล้ว!");
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('line_user_id', profile.userId)
+      .eq('status', 'approved')
+      .gte('created_at', startIso)
+      .lt('created_at', endIso);
+
+    if (error) throw error;
+    let sum = 0;
+    for (const r of data) {
+      // sum as numbers
+      sum += Number(r.amount || 0);
+    }
+    return sum;
   } catch (err) {
-    console.error("ส่ง Flex ผิดพลาด:", err);
+    console.error("fetchApprovedSumThisMonth error:", err);
+    return 0;
+  }
+}
+
+// Load member name from members table
+async function fetchMemberName() {
+  if (!profile) return null;
+  try {
+    const { data, error } = await supabase
+      .from('members')
+      .select('line_display_name')
+      .eq('line_user_id', profile.userId)
+      .limit(1)
+      .single();
+    if (error) {
+      // no row — fallback to LIFF profile
+      return profile.displayName;
+    }
+    return data.line_display_name || profile.displayName;
+  } catch (err) {
+    console.error('fetchMemberName err', err);
+    return profile.displayName;
+  }
+}
+
+/* ---------- CART UI ---------- */
+function renderCart() {
+  const el = document.getElementById('cartList');
+  if (cart.shares === 0) {
+    el.innerText = 'ตะกร้าว่าง';
+  } else {
+    el.innerHTML = `หุ้น: <strong>${cart.shares}</strong> หน่วย<br/>ราคา/หน่วย: <strong>${document.getElementById('priceInput').value} ฿</strong>`;
+  }
+  document.getElementById('cartTotal').innerText = formatBaht(cart.amount);
+}
+
+// Add to cart
+document.getElementById('addBtn').addEventListener('click', () => {
+  const qty = Math.max(1, Math.floor(Number(document.getElementById('qtyInput').value) || 1));
+  const price = Math.floor(Number(document.getElementById('priceInput').value) || 10);
+  cart.shares += qty;
+  cart.amount = cart.shares * price;
+  document.getElementById('cartMsg').innerText = '';
+  renderCart();
+});
+
+// Clear cart
+document.getElementById('clearBtn').addEventListener('click', () => {
+  cart = { shares: 0, amount: 0 };
+  renderCart();
+});
+
+// Checkout (create pending transaction, show QR, send flex)
+document.getElementById('checkoutBtn').addEventListener('click', async () => {
+  if (!profile) return alert('ระบบยังไม่ได้เชื่อมต่อ LINE โปรดเปิดผ่าน LIFF');
+
+  // validations
+  const price = Math.floor(Number(document.getElementById('priceInput').value) || 10);
+  const amount = cart.amount;
+  if (amount < MIN_TOTAL_BAHT) return document.getElementById('cartMsg').innerText = `ยอดขั้นต่ำคือ ${MIN_TOTAL_BAHT} บาท`;
+  if (cart.shares <= 0) return document.getElementById('cartMsg').innerText = 'กรุณาเพิ่มจำนวนหุ้นในตะกร้า';
+
+  // check approved sum this month (based on approved orders only as requested)
+  document.getElementById('cartMsg').innerText = 'กำลังตรวจสอบสิทธิ์การซื้อ...';
+  const approvedSum = await fetchApprovedSumThisMonth();
+  console.log('approvedSum this month:', approvedSum);
+
+  if (approvedSum >= MAX_MONTHLY_APPROVED_BAHT) {
+    document.getElementById('cartMsg').innerText = `ยอดที่อนุมัติในเดือนนี้ครบ ${MAX_MONTHLY_APPROVED_BAHT} บาทแล้ว ไม่สามารถสั่งซื้อเพิ่มได้ ต้องรอเดือนถัดไป`;
+    return;
+  }
+
+  // Note: per spec we base limit on approved only => allow creating pending even if pending would push over cap.
+  // If you want to prevent pending that would exceed cap, uncomment the lines below:
+  // if (approvedSum + amount > MAX_MONTHLY_APPROVED_BAHT) { ... }
+
+  // insert pending transaction (single row summarizing cart)
+  document.getElementById('cartMsg').innerText = 'กำลังสร้างคำสั่งซื้อ...';
+  try {
+    // fetch member name to include in flex
+    const memberName = await fetchMemberName();
+
+    const insertObj = {
+      line_user_id: profile.userId,
+      line_display_name: memberName,
+      shares: cart.shares,
+      amount: amount,
+      proof_url: null,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    const { data: insertData, error: insertError } = await supabase
+      .from('transactions')
+      .insert([insertObj])
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+    currentTxId = insertData.id;
+
+    // show QR
+    const qrUrl = `https://promptpay.io/${PAYEE_PHONE}/${amount}.png`;
+    document.getElementById('txInfo').innerText = `คำสั่งซื้อเลขที่: ${currentTxId}\nจำนวน: ${cart.shares} หุ้น — ยอด ${formatBaht(amount)}\nชื่อ: ${memberName}`;
+    document.getElementById('qrImg').src = qrUrl;
+    document.getElementById('checkoutArea').classList.remove('hidden');
+
+    // call Edge Function to send Flex message informing user that order is created & awaiting review
+    try {
+      const resp = await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: profile.userId,
+          shares: cart.shares,
+          amount: amount,
+          memberName: memberName,
+          txId: currentTxId,
+          mode: 'order_created' // optional flag for function to render different messages
+        })
+      });
+      const txt = await resp.text();
+      console.log('send-line-message resp:', resp.status, txt);
+    } catch (err) {
+      console.error('call function error:', err);
+    }
+
+    // clear cart UI but keep checkout area for upload
+    cart = { shares: 0, amount: 0 };
+    renderCart();
+    document.getElementById('cartMsg').innerText = 'ส่งคำสั่งซื้อแล้ว รอการตรวจสอบจากเจ้าหน้าที่';
+  } catch (err) {
+    console.error('checkout insert error:', err);
+    document.getElementById('cartMsg').innerText = 'เกิดข้อผิดพลาดระหว่างสร้างคำสั่งซื้อ';
   }
 });
 
-/* ✅ เมื่ออัปโหลดหลักฐาน */
-document.getElementById("uploadBtn").addEventListener("click", async () => {
-  const file = document.getElementById("proofFile").files[0];
-  if (!file) return alert("กรุณาเลือกไฟล์รูปก่อน");
-  const shares = +document.getElementById("sharesInput").value;
-  const amount = shares * SHARE_PRICE;
-  const userId = profile.userId;
-  const displayName = profile.displayName;
+// Upload slip and update transaction
+document.getElementById('uploadSlipBtn').addEventListener('click', async () => {
+  const file = document.getElementById('slipFile').files[0];
+  if (!file) return alert('กรุณาเลือกไฟล์สลิปก่อน');
+  if (!currentTxId) return alert('ไม่พบคำสั่งซื้อ กรุณาทำการสั่งซื้อก่อน');
 
-  document.getElementById("statusText").innerText = "⏳ กำลังอัปโหลด...";
-  document.getElementById("uploadBtn").disabled = true;
-
+  document.getElementById('uploadMsg').innerText = 'กำลังอัปโหลดสลิป...';
   try {
-    // 1️⃣ อัปโหลดรูปไป Storage
-    const ext = file.name.split(".").pop();
-    const path = `${userId}_${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabaseClient
+    const ext = file.name.split('.').pop();
+    const path = `proofs/${profile.userId}_${Date.now()}.${ext}`;
+    // upload
+    const { data: uploadData, error: uploadError } = await supabase
       .storage.from(STORAGE_BUCKET)
       .upload(path, file);
     if (uploadError) throw uploadError;
 
-    // 2️⃣ ดึง URL ของรูป
-    const { data: publicData } = supabaseClient
-      .storage.from(STORAGE_BUCKET)
-      .getPublicUrl(path);
+    // get public url
+    const { data: publicData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
     const proofUrl = publicData.publicUrl;
 
-    // 3️⃣ บันทึกข้อมูลธุรกรรม
-    const { error: insertError } = await supabaseClient.from("transactions").insert([{
-      line_user_id: userId,
-      line_display_name: displayName,
-      shares,
-      amount,
-      proof_url: proofUrl,
-      status: "pending"
-    }]);
-    if (insertError) throw insertError;
+    // update transaction row with proof_url
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({ proof_url: proofUrl })
+      .eq('id', currentTxId);
 
-    document.getElementById("statusText").innerText = "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบจากแอดมิน";
+    if (updateError) throw updateError;
+
+    document.getElementById('uploadMsg').innerText = '✅ อัปโหลดสลิปเรียบร้อย รอตรวจสอบจากเจ้าหน้าที่';
+    // optionally notify admin or send another flex to user (we can call function again with mode='slip_uploaded')
+    try {
+      await fetch(FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: profile.userId,
+          shares: null,
+          amount: null,
+          memberName: null,
+          txId: currentTxId,
+          mode: 'slip_uploaded'
+        })
+      });
+    } catch (e) { console.warn('notify slip upload failed', e); }
   } catch (err) {
-    console.error(err);
-    document.getElementById("statusText").innerText = "❌ เกิดข้อผิดพลาด: " + err.message;
-  } finally {
-    document.getElementById("uploadBtn").disabled = false;
+    console.error('upload slip error', err);
+    document.getElementById('uploadMsg').innerText = '❌ เกิดข้อผิดพลาดขณะอัปโหลด';
   }
 });
+
+// Done button -> hide checkout area
+document.getElementById('doneBtn').addEventListener('click', () => {
+  document.getElementById('checkoutArea').classList.add('hidden');
+  document.getElementById('slipFile').value = '';
+  document.getElementById('uploadMsg').innerText = '';
+  currentTxId = null;
+});
+
+/* initial render */
+renderCart();
 </script>
 </body>
 </html>
