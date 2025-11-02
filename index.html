@@ -50,6 +50,15 @@
       <input id="slipFile" type="file" accept="image/*" class="w-full border rounded p-1 mb-3" />
       <button id="uploadSlipBtn" class="bg-blue-600 text-white w-full py-2 rounded">📤 ส่งหลักฐาน</button>
       <p id="uploadMsg" class="text-sm text-center mt-2"></p>
+
+      <!-- Loading Spinner -->
+      <div id="loadingSpinner" class="hidden flex justify-center items-center mt-3">
+        <svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <span class="ml-2 text-blue-600">กำลังอัปโหลด...</span>
+      </div>
     </div>
 
     <!-- 🔹 รายละเอียดคำสั่งซื้อ -->
@@ -72,16 +81,12 @@ let currentTxId = null;
 let lastOrder = { shares: 0, amount: 0 };
 
 /* ================= INIT ================= */
-const urlParams = new URLSearchParams(window.location.search);
-const txId = urlParams.get("txId");
-
 async function init() {
   await liff.init({ liffId: LIFF_ID });
   if (!liff.isLoggedIn()) return liff.login();
   profile = await liff.getProfile();
   document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
-  if (txId) showTransactionDetail(txId);
-  else loadMember(profile.userId);
+  loadMember(profile.userId);
 }
 init();
 
@@ -143,27 +148,48 @@ document.getElementById("checkoutBtn").onclick = async () => {
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const file = document.getElementById("slipFile").files[0];
   if (!file) return alert("กรุณาเลือกไฟล์ก่อน");
-  document.getElementById("uploadMsg").innerText = "กำลังอัปโหลด...";
-  const ext = file.name.split(".").pop();
-  const path = `${profile.userId}_${Date.now()}.${ext}`;
-  const { error: uploadError } = await supabase.storage.from("proofs").upload(path, file);
-  if (uploadError) return alert(uploadError.message);
-  const { data: publicUrl } = supabase.storage.from("proofs").getPublicUrl(path);
-  await supabase.from("transactions").update({ proof_url: publicUrl.publicUrl }).eq("id", currentTxId);
-  document.getElementById("uploadMsg").innerText = "✅ ส่งหลักฐานเรียบร้อย รอตรวจสอบ";
 
-  // ✅ ส่ง Flex Message พร้อมรูปสลิปจริง
-  await fetch(FUNCTION_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userId: profile.userId,
-      memberName: profile.displayName,
-      amount: lastOrder.amount,
-      proofUrl: publicUrl.publicUrl,
-      mode: "slip_uploaded"
-    })
-  });
+  const loading = document.getElementById("loadingSpinner");
+  loading.classList.remove("hidden");
+  document.getElementById("uploadMsg").innerText = "";
+
+  try {
+    const ext = file.name.split(".").pop();
+    const path = `${profile.userId}_${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("proofs").upload(path, file);
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data: publicUrl } = supabase.storage.from("proofs").getPublicUrl(path);
+    await supabase.from("transactions").update({ proof_url: publicUrl.publicUrl }).eq("id", currentTxId);
+
+    // ส่ง Flex Message
+    const res = await fetch(FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: profile.userId,
+        memberName: profile.displayName,
+        amount: lastOrder.amount,
+        proofUrl: publicUrl.publicUrl,
+        mode: "slip_uploaded"
+      })
+    });
+
+    loading.classList.add("hidden");
+
+    if (res.ok) {
+      alert("✅ ส่งสลิปเรียบร้อยแล้ว ขอบคุณค่ะ");
+      setTimeout(() => {
+        if (liff.isInClient()) liff.closeWindow();
+        else window.location.href = `https://liff.line.me/${LIFF_ID}`;
+      }, 1000);
+    } else {
+      alert("ส่งข้อมูลสำเร็จ แต่ไม่สามารถส่งข้อความไปยัง LINE ได้");
+    }
+  } catch (err) {
+    loading.classList.add("hidden");
+    alert("เกิดข้อผิดพลาด: " + err.message);
+  }
 };
 </script>
 </body>
