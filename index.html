@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>สหกรณ์ | ซื้อหุ้น</title>
+  <title>สหกรณ์ | ระบบซื้อหุ้น</title>
 
   <!-- ✅ Libraries -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -43,7 +43,7 @@
 <body class="light-mode min-h-screen flex flex-col items-center justify-start py-6">
   <div class="w-full max-w-md space-y-4 relative">
 
-    <!-- ☀️🌙 ปุ่มสลับโหมด -->
+    <!-- 🌙 ปุ่มสลับโหมด -->
     <button id="themeToggle" class="absolute right-2 top-2 text-2xl cursor-pointer">🌙</button>
 
     <div class="text-center mb-2">
@@ -104,19 +104,18 @@
 <script>
 /* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // anon key
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA"; // <- ใส่ anon key ของพี่
 const LIFF_ID = "1660910795-4w2rdGn6";
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/send-line-message`;
 const PROMPTPAY_NO = "0936494961";
 const SHARE_PRICE = 10, MIN_TOTAL = 100, MAX_TOTAL = 20000;
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-/* ========================================== */
 
+/* ================= STATE ================= */
 let profile = null, cart = { shares: 0, amount: 0 }, currentTxId = null;
 
-/* ================= THEME SWITCH ================= */
-const body = document.body;
-const themeToggle = document.getElementById("themeToggle");
+/* ================= THEME ================= */
+const body = document.body, themeToggle = document.getElementById("themeToggle");
 function applyTheme(theme) {
   body.classList.remove("dark-mode", "light-mode");
   body.classList.add(theme);
@@ -154,7 +153,7 @@ async function loadMember(userId) {
   document.getElementById("totalAmount").innerText = member.total_amount ?? 0;
 }
 
-/* ================= BUY ================= */
+/* ================= ตะกร้าซื้อหุ้น ================= */
 const productGrid = document.getElementById("productGrid");
 [10, 50, 100, 500, 1000].forEach(s => {
   const div = document.createElement("div");
@@ -163,7 +162,6 @@ const productGrid = document.getElementById("productGrid");
   div.onclick = () => addShare(s);
   productGrid.appendChild(div);
 });
-
 function addShare(count) {
   cart.shares += count;
   cart.amount = cart.shares * SHARE_PRICE;
@@ -176,7 +174,7 @@ document.getElementById("clearBtn").onclick = () => {
   document.getElementById("totalPrice").innerText = "0";
 };
 
-/* ================= CHECKOUT ================= */
+/* ================= ชำระเงิน ================= */
 document.getElementById("checkoutBtn").onclick = async () => {
   if (cart.amount < MIN_TOTAL) return Swal.fire("ต่ำเกินไป", `ขั้นต่ำ ${MIN_TOTAL} บาท`, "warning");
   if (cart.amount > MAX_TOTAL) return Swal.fire("สูงสุดต่อเดือน", `ไม่เกิน ${MAX_TOTAL} บาท`, "warning");
@@ -192,7 +190,7 @@ document.getElementById("checkoutBtn").onclick = async () => {
   document.getElementById("checkoutArea").classList.remove("hidden");
 };
 
-/* ================= UPLOAD SLIP ================= */
+/* ================= อัปโหลดสลิป ================= */
 document.getElementById("uploadSlipBtn").onclick = async () => {
   const file = document.getElementById("slipFile").files[0];
   if (!file) return Swal.fire("กรุณาเลือกไฟล์ก่อน", "", "warning");
@@ -218,32 +216,62 @@ document.getElementById("uploadSlipBtn").onclick = async () => {
   });
 };
 
-/* ================= HISTORY ================= */
+/* ================= ประวัติคำสั่งซื้อ ================= */
 async function loadHistory(userId) {
   const { data } = await supabase.from("transactions").select("*").eq("line_user_id", userId).order("created_at", { ascending: false });
   const list = document.getElementById("historyList");
-  list.innerHTML = data.map(tx => {
+  list.innerHTML = "";
+
+  if (!data || data.length === 0) {
+    list.innerHTML = `<p class="text-gray-400 text-center">ยังไม่มีรายการคำสั่งซื้อ</p>`;
+    return;
+  }
+
+  data.forEach(tx => {
     const s = {
       pending: { text: "รอชำระ", color: "text-yellow-500", icon: "🕒" },
       slip_uploaded: { text: "รอตรวจสอบ", color: "text-blue-500", icon: "📤" },
       approved: { text: "อนุมัติแล้ว", color: "text-green-500", icon: "✅" },
       rejected: { text: "ยกเลิก", color: "text-red-500", icon: "❌" }
     }[tx.status];
-    return `
-      <div class="card flex justify-between items-start">
-        <div>
-          <p class="font-semibold">${tx.shares} หุ้น</p>
-          <p>${Number(tx.amount).toLocaleString()} บาท</p>
-          <p class="${s.color} mt-1">${s.icon} ${s.text}</p>
-          <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
-        </div>
-        ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-400 underline text-sm">📷 ดูสลิป</a>` : ""}
+
+    const div = document.createElement("div");
+    div.className = "card flex justify-between items-start";
+    div.innerHTML = `
+      <div>
+        <p class="font-semibold">${tx.shares} หุ้น</p>
+        <p>${Number(tx.amount).toLocaleString()} บาท</p>
+        <p class="${s.color} mt-1">${s.icon} ${s.text}</p>
+        <p class="text-xs text-gray-400 mt-1">${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+      </div>
+      <div class="flex flex-col items-end">
+        ${tx.proof_url ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-400 underline text-sm mb-1">📷 ดูสลิป</a>` : ""}
+        <button class="text-green-600 underline text-sm" onclick='showDetail(${JSON.stringify(tx)})'>🔍 รายละเอียด</button>
       </div>
     `;
-  }).join("");
+    list.appendChild(div);
+  });
 }
 
-/* ================= TAB SWITCH ================= */
+/* ✅ Popup รายละเอียดคำสั่งซื้อ */
+function showDetail(tx) {
+  Swal.fire({
+    title: "📄 รายละเอียดคำสั่งซื้อ",
+    html: `
+      <div class='text-left text-gray-700'>
+        <p><b>หุ้น:</b> ${tx.shares} หน่วย</p>
+        <p><b>ยอดเงิน:</b> ${Number(tx.amount).toLocaleString()} บาท</p>
+        <p><b>สถานะ:</b> ${tx.status}</p>
+        <p><b>วันที่:</b> ${new Date(tx.created_at).toLocaleString("th-TH")}</p>
+        ${tx.approved_at ? `<p><b>อนุมัติเมื่อ:</b> ${new Date(tx.approved_at).toLocaleString("th-TH")}</p>` : ""}
+        ${tx.proof_url ? `<img src="${tx.proof_url}" class="w-full mt-3 rounded-lg" />` : ""}
+      </div>
+    `,
+    confirmButtonText: "ปิด",
+  });
+}
+
+/* ================= TAB ================= */
 document.getElementById("tabBuy").onclick = () => {
   document.getElementById("tabBuy").classList.add("tab-active");
   document.getElementById("tabHistory").classList.remove("tab-active");
