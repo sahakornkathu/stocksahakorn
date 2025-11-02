@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>สหกรณ์ | ระบบผู้ดูแล</title>
 
-  <!-- ✅ Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
-  <!-- ✅ Tailwind -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 
@@ -22,7 +20,6 @@
 
     <div id="statusMsg" class="text-center mb-3 text-sm text-gray-600"></div>
 
-    <!-- ตารางข้อมูล -->
     <div class="overflow-x-auto bg-white p-4 rounded-xl shadow">
       <table class="w-full text-sm border border-gray-200">
         <thead class="bg-gray-100">
@@ -44,12 +41,9 @@
   </div>
 
 <script>
-/* ================= CONFIG ================= */
 const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
 const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message";
-/* ========================================== */
-
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const statusMsg = document.getElementById("statusMsg");
 
@@ -80,7 +74,6 @@ async function loadTransactions() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("❌ โหลดข้อมูลล้มเหลว:", error);
     tableBody.innerHTML = `<tr><td colspan="9" class="text-center text-red-500 p-3">โหลดข้อมูลล้มเหลว (${error.message})</td></tr>`;
     return;
   }
@@ -99,19 +92,26 @@ async function loadTransactions() {
       <td class="p-2 border text-right">${Number(tx.amount).toLocaleString()} บาท</td>
       <td class="p-2 border">${new Date(tx.created_at).toLocaleDateString("th-TH")}</td>
       <td class="p-2 border text-center">
-        ${tx.status === 'approved'
-          ? '<span class="text-green-600 font-semibold">อนุมัติแล้ว</span>'
-          : '<span class="text-yellow-600">รอตรวจสอบ</span>'}
+        ${
+          tx.status === 'approved' ? '<span class="text-green-600 font-semibold">อนุมัติแล้ว</span>' :
+          tx.status === 'rejected' ? '<span class="text-red-600 font-semibold">ถูกยกเลิก</span>' :
+          '<span class="text-yellow-600">รอตรวจสอบ</span>'
+        }
       </td>
       <td class="p-2 border text-center">
         ${tx.proof_url
           ? `<a href="${tx.proof_url}" target="_blank" class="text-blue-600 underline">ดูสลิป</a>`
           : '-'}
       </td>
-      <td class="p-2 border text-center">
+      <td class="p-2 border text-center space-x-1">
         ${
-          tx.status !== 'approved'
-            ? `<button class="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700" onclick="approveTx('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name ?? ''} ${tx.members?.last_name ?? ''}', ${tx.amount})">อนุมัติ</button>`
+          tx.status === 'pending'
+            ? `
+              <button class="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                onclick="updateStatus('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name ?? ''} ${tx.members?.last_name ?? ''}', ${tx.amount}, 'approved')">อนุมัติ</button>
+              <button class="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
+                onclick="updateStatus('${tx.id}', '${tx.line_user_id}', '${tx.members?.first_name ?? ''} ${tx.members?.last_name ?? ''}', ${tx.amount}, 'rejected')">ยกเลิก</button>
+            `
             : `<span class="text-gray-400">✔️</span>`
         }
       </td>
@@ -119,26 +119,28 @@ async function loadTransactions() {
   `).join("");
 }
 
-/* ================= อนุมัติ ================= */
-async function approveTx(txId, userId, memberName, amount) {
-  if (!confirm(`ยืนยันการอนุมัติคำสั่งซื้อของ ${memberName}?`)) return;
+/* ================= อัปเดตสถานะ (อนุมัติ / ยกเลิก) ================= */
+async function updateStatus(txId, userId, memberName, amount, action) {
+  const actionText = action === "approved" ? "อนุมัติ" : "ยกเลิก";
+  if (!confirm(`ยืนยันการ${actionText}คำสั่งซื้อของ ${memberName}?`)) return;
 
-  statusMsg.textContent = "⏳ กำลังอนุมัติ...";
+  statusMsg.textContent = `⏳ กำลัง${actionText}...`;
   statusMsg.className = "text-center mb-3 text-sm text-yellow-600";
 
-  // ✅ อัปเดตใน Supabase
+  const statusValue = action === "approved" ? "approved" : "rejected";
   const { error } = await supabase
     .from("transactions")
-    .update({ status: "approved", approved_at: new Date().toISOString() })
+    .update({ status: statusValue, approved_at: new Date().toISOString() })
     .eq("id", txId);
 
   if (error) {
-    statusMsg.textContent = "❌ เกิดข้อผิดพลาดในการอัปเดตสถานะ: " + error.message;
+    statusMsg.textContent = "❌ เกิดข้อผิดพลาด: " + error.message;
     statusMsg.className = "text-center mb-3 text-sm text-red-600";
     return;
   }
 
-  // ✅ ส่ง Flex Message
+  // ✅ ส่ง Flex Message ตามสถานะ
+  const mode = action === "approved" ? "approved_success" : "rejected_slip";
   try {
     const res = await fetch(FUNCTION_URL, {
       method: "POST",
@@ -147,20 +149,20 @@ async function approveTx(txId, userId, memberName, amount) {
         userId: userId,
         memberName: memberName,
         amount: amount,
-        mode: "approved_success"
+        mode: mode
       })
     });
 
     if (res.ok) {
-      statusMsg.textContent = `✅ อนุมัติสำเร็จ และส่ง Flex Message ไปยัง ${memberName} เรียบร้อย`;
+      statusMsg.textContent = `✅ ${actionText}สำเร็จ และส่ง Flex Message ไปยัง ${memberName} เรียบร้อย`;
       statusMsg.className = "text-center mb-3 text-sm text-green-600";
     } else {
       const text = await res.text();
-      statusMsg.textContent = `⚠️ อนุมัติสำเร็จ แต่ส่ง Flex ไม่สำเร็จ (${text})`;
+      statusMsg.textContent = `⚠️ ${actionText}สำเร็จ แต่ส่ง Flex ไม่สำเร็จ (${text})`;
       statusMsg.className = "text-center mb-3 text-sm text-red-600";
     }
   } catch (err) {
-    statusMsg.textContent = `❌ อนุมัติสำเร็จ แต่ส่ง Flex ผิดพลาด: ${err.message}`;
+    statusMsg.textContent = `❌ ${actionText}สำเร็จ แต่ส่ง Flex ผิดพลาด: ${err.message}`;
     statusMsg.className = "text-center mb-3 text-sm text-red-600";
   }
 
