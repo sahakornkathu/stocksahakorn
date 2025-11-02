@@ -40,9 +40,9 @@
 
 <script>
 /* ================= CONFIG ================= */
-const SUPABASE_URL = "YOUR_SUPABASE_URL";
-const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
-const FUNCTION_URL = "YOUR_FUNCTION_URL"; // Edge Function สำหรับส่ง Flex Message
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
+const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // Edge Function สำหรับส่ง Flex Message
 /* ========================================== */
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
