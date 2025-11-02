@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>สมัครสมาชิกสหกรณ์</title>
+
+  <!-- ✅ Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.0/dist/umd/supabase.min.js"></script>
+  <!-- ✅ LIFF -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- ✅ Tailwind -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-md mx-auto p-4">
+    <h1 class="text-2xl font-bold text-center mb-4">🪪 สมัครสมาชิกสหกรณ์</h1>
+    <p id="status" class="text-center text-gray-600 mb-4">กำลังเชื่อมต่อ...</p>
+
+    <!-- ✅ ฟอร์มสมัคร -->
+    <form id="registerForm" class="hidden bg-white p-5 rounded-xl shadow space-y-3">
+      <div>
+        <label class="block font-medium">ชื่อ</label>
+        <input id="firstName" type="text" class="w-full border rounded p-2" required />
+      </div>
+      <div>
+        <label class="block font-medium">นามสกุล</label>
+        <input id="lastName" type="text" class="w-full border rounded p-2" required />
+      </div>
+      <div>
+        <label class="block font-medium">เลขทะเบียนสมาชิก</label>
+        <input id="memberNo" type="text" class="w-full border rounded p-2" required />
+      </div>
+      <div>
+        <label class="block font-medium">กลุ่ม</label>
+        <select id="groupName" class="w-full border rounded p-2" required>
+          <option value="">-- เลือกกลุ่ม --</option>
+          <option>กลุ่ม 1</option>
+          <option>กลุ่ม 2</option>
+          <option>กลุ่ม 3</option>
+        </select>
+      </div>
+      <button type="submit" class="bg-green-600 text-white w-full py-2 rounded mt-2">✅ สมัครสมาชิก</button>
+    </form>
+
+    <!-- ✅ แสดงผลลัพธ์ -->
+    <div id="resultArea" class="hidden bg-white p-5 rounded-xl shadow text-center">
+      <p id="resultMsg" class="text-lg mb-2"></p>
+      <p id="memberInfo" class="text-gray-600"></p>
+      <button class="bg-blue-600 text-white px-4 py-2 rounded mt-4" onclick="window.location.href='https://liff.line.me/YOUR_LIFF_ID'">🏠 กลับหน้าหลัก</button>
+    </div>
+  </div>
+
+<script>
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxbnFvbGV4dmRrZGZ6d3prbnp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNDA4MjksImV4cCI6MjA3NzYxNjgyOX0.J-pGOOluMPDbDr6qwUSnGfJFlr-G9BTOSGNq42WSxZA";
+const LIFF_ID = "1660910795-pVE6RZB3";
+const FUNCTION_URL = "https://uqnqolexvdkdfzwzknzu.supabase.co/functions/v1/send-line-message"; // Edge Function สำหรับส่ง Flex Message
+/* ========================================== */
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let profile = null;
+
+/* ================= INIT ================= */
+async function init() {
+  await liff.init({ liffId: LIFF_ID });
+  if (!liff.isLoggedIn()) return liff.login();
+  profile = await liff.getProfile();
+
+  document.getElementById("status").innerText = `สวัสดี ${profile.displayName}`;
+  checkMember(profile.userId);
+}
+init();
+
+/* ================= ตรวจสอบว่ามีในระบบหรือยัง ================= */
+async function checkMember(userId) {
+  const { data: member } = await supabase.from("members").select("*").eq("line_user_id", userId).single();
+
+  if (member) {
+    // มีอยู่แล้ว
+    document.getElementById("registerForm").classList.add("hidden");
+    document.getElementById("resultArea").classList.remove("hidden");
+    document.getElementById("resultMsg").innerText = "คุณเป็นสมาชิกอยู่แล้ว ✅";
+    document.getElementById("memberInfo").innerHTML = `
+      <p><b>ชื่อ:</b> ${member.first_name} ${member.last_name}</p>
+      <p><b>เลขสมาชิก:</b> ${member.member_no}</p>
+      <p><b>กลุ่ม:</b> ${member.group_name}</p>
+      <p><b>ยอดสะสม:</b> ${member.total_amount.toLocaleString()} บาท</p>`;
+  } else {
+    // ยังไม่สมัคร
+    document.getElementById("registerForm").classList.remove("hidden");
+  }
+}
+
+/* ================= เมื่อกดสมัคร ================= */
+document.getElementById("registerForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const firstName = document.getElementById("firstName").value.trim();
+  const lastName = document.getElementById("lastName").value.trim();
+  const memberNo = document.getElementById("memberNo").value.trim();
+  const groupName = document.getElementById("groupName").value.trim();
+
+  if (!firstName || !lastName || !memberNo || !groupName) {
+    alert("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+    return;
+  }
+
+  const { error } = await supabase.from("members").insert([{
+    line_user_id: profile.userId,
+    line_display_name: profile.displayName,
+    first_name: firstName,
+    last_name: lastName,
+    member_no: memberNo,
+    group_name: groupName,
+    carry_forward: 0,
+    purchase_year: 0
+  }]);
+
+  if (error) {
+    alert("เกิดข้อผิดพลาด: " + error.message);
+    return;
+  }
+
+  document.getElementById("registerForm").classList.add("hidden");
+  document.getElementById("resultArea").classList.remove("hidden");
+  document.getElementById("resultMsg").innerText = "สมัครสมาชิกสำเร็จ 🎉";
+  document.getElementById("memberInfo").innerHTML = `
+    <p><b>ชื่อ:</b> ${firstName} ${lastName}</p>
+    <p><b>เลขสมาชิก:</b> ${memberNo}</p>
+    <p><b>กลุ่ม:</b> ${groupName}</p>`;
+
+  // ✅ ส่ง Flex Message ผ่าน Edge Function
+  await fetch(FUNCTION_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: profile.userId,
+      memberName: `${firstName} ${lastName}`,
+      memberNo: memberNo,
+      group: groupName,
+      mode: "register_success"
+    }),
+  });
+});
+</script>
+</body>
+</html>
