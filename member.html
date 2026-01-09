@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>ซื้อหุ้นสหกรณ์</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="./member.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 480px; margin: auto; }
+    .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    button { padding: 14px; font-size: 16px; }
+    button:disabled { background:#ccc }
+    .box { border:1px solid #ddd; padding:10px; margin:10px 0 }
+  </style>
+</head>
+<body>
+
+<h2>ซื้อหุ้นสหกรณ์</h2>
+
+<div class="box">
+  <b id="memberName">กำลังโหลด...</b><br>
+  ยอดคงเหลือเดือนนี้: <b id="remain">-</b> บาท
+</div>
+
+<div class="grid">
+  <button data-amount="10">10</button>
+  <button data-amount="100">100</button>
+  <button data-amount="500">500</button>
+  <button data-amount="1000">1000</button>
+  <button data-amount="10000">10000</button>
+  <button data-amount="20000">20000</button>
+</div>
+
+<div class="box">
+  <div>ยอดในตะกร้า: <b id="cartTotal">0</b> บาท</div>
+  <input type="file" id="slip" accept="image/*">
+  <br><br>
+  <button id="submit">ยืนยันคำสั่งซื้อ</button>
+</div>
+
+<div id="msg"></div>
+
+</body>
+</html>
