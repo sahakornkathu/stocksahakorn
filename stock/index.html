@@ -1,49 +1,79 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>ซื้อหุ้นสหกรณ์</title>
+
+  <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- LIFF -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
   <style>
-    body { font-family: sans-serif; background:#f5f5f5; }
-    .card { background:#fff; padding:20px; max-width:420px; margin:40px auto; border-radius:10px; }
-    input, select, button {
-      width:100%; padding:10px; margin-top:10px;
+    body { font-family: sans-serif; background:#f4f6f8; }
+    .card {
+      max-width:420px;
+      margin:40px auto;
+      background:#fff;
+      padding:20px;
+      border-radius:10px;
+      box-shadow:0 2px 10px rgba(0,0,0,.1);
     }
-    button { background:#2e7d32; color:#fff; border:none; border-radius:6px; }
+    input, select, button {
+      width:100%;
+      padding:10px;
+      margin-top:10px;
+    }
+    button {
+      background:#2e7d32;
+      color:#fff;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+    }
+    .ok { color:green; margin-top:8px; }
   </style>
 </head>
 <body>
 
 <div class="card">
-  <h2>📈 ซื้อหุ้นสหกรณ์</h2>
+  <h3>📈 ซื้อหุ้นสหกรณ์</h3>
 
   <label>เลขทะเบียนหุ้น</label>
-  <input id="id_customer" placeholder="กรอกเลขทะเบียนหุ้น" />
+  <input id="id_customer" type="number" placeholder="กรอกเลขทะเบียนหุ้น">
 
-  <div id="memberInfo" style="margin-top:10px;color:#2e7d32;"></div>
+  <div id="memberInfo" class="ok"></div>
 
   <label>เลือกหุ้น</label>
   <select id="stock"></select>
 
   <label>จำนวนหุ้น</label>
-  <input type="number" id="qty" value="1" min="1" />
+  <input id="qty" type="number" min="1" value="1">
 
   <button onclick="buyStock()">ยืนยันซื้อหุ้น</button>
 </div>
 
 <script>
-const supabase = supabase.createClient(
-  'https://ttottijljxoinptmhgtu.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0b3R0aWpsanhvaW5wdG1oZ3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwMTYxODQsImV4cCI6MjA3MzU5MjE4NH0.XnIf3xLzSbZDwFVKWjLTCiF4jnnDMQ1W95EI-v6F-3Y'
-)
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "https://ttottijljxoinptmhgtu.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0b3R0aWpsanhvaW5wdG1oZ3R1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwMTYxODQsImV4cCI6MjA3MzU5MjE4NH0.XnIf3xLzSbZDwFVKWjLTCiF4jnnDMQ1W95EI-v6F-3Y"
+const LIFF_ID = "1660910795-lDlxC6Wy"
+/* ========================================= */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 let lineUserId = null
 let member = null
 
+/* ---------- INIT ---------- */
 async function init() {
-  await liff.init({ liffId: '1660910795-lDlxC6Wy' })
+  await liff.init({ liffId: LIFF_ID })
+
+  if (!liff.isInClient()) {
+    alert("❌ กรุณาเปิดผ่าน LINE")
+    return
+  }
+
   const profile = await liff.getProfile()
   lineUserId = profile.userId
 
@@ -51,34 +81,49 @@ async function init() {
 }
 init()
 
+/* ---------- LOAD STOCK ---------- */
 async function loadStocks() {
-  const { data } = await supabase
+  const { data, error } = await sb
     .from('stocks')
     .select('*')
     .eq('is_active', true)
 
-  const select = document.getElementById('stock')
+  if (error) {
+    alert(error.message)
+    return
+  }
+
+  const sel = document.getElementById('stock')
+  sel.innerHTML = ""
+
   data.forEach(s => {
-    const opt = document.createElement('option')
-    opt.value = s.stock_id
-    opt.text = `${s.stock_name} (${s.price_per_unit} บาท)`
-    select.appendChild(opt)
+    const o = document.createElement('option')
+    o.value = s.stock_id
+    o.text = `${s.stock_name} (${s.price_per_unit} บาท)`
+    o.dataset.price = s.price_per_unit
+    sel.appendChild(o)
   })
 }
 
+/* ---------- CHECK MEMBER ---------- */
 document.getElementById('id_customer').addEventListener('change', checkMember)
 
 async function checkMember() {
   const id = document.getElementById('id_customer').value
 
-  const { data } = await supabase
+  const { data, error } = await sb
     .from('members')
-    .select('*')
+    .select('id_customer,prefix,name,lastname,uid')
     .eq('id_customer', id)
     .single()
 
-  if (!data || data.uid !== lineUserId) {
-    alert('❌ เลขทะเบียนหุ้นไม่ตรงกับ LINE')
+  if (error || !data) {
+    alert("❌ ไม่พบสมาชิก")
+    return
+  }
+
+  if (data.uid !== lineUserId) {
+    alert("❌ LINE นี้ไม่ตรงกับเลขทะเบียนหุ้น")
     return
   }
 
@@ -87,32 +132,46 @@ async function checkMember() {
     `👤 ${data.prefix}${data.name} ${data.lastname}`
 }
 
+/* ---------- BUY STOCK ---------- */
 async function buyStock() {
   if (!member) {
-    alert('กรุณาตรวจสอบสมาชิกก่อน')
+    alert("กรุณาตรวจสอบสมาชิกก่อน")
     return
   }
 
-  const stock_id = document.getElementById('stock').value
-  const qty = document.getElementById('qty').value
+  const stockSel = document.getElementById('stock')
+  const stock_id = stockSel.value
+  const price = stockSel.selectedOptions[0].dataset.price
+  const qty = parseInt(document.getElementById('qty').value)
 
-  // 1. create order
-  const { data: order } = await supabase
+  // create order
+  const { data: order, error: e1 } = await sb
     .from('stock_orders')
     .insert({ id_customer: member.id_customer })
     .select()
     .single()
 
-  // 2. create detail
-  await supabase.from('stock_order_details').insert({
-    order_id: order.order_id,
-    stock_id,
-    quantity: qty,
-    price_per_unit: document.getElementById('stock').selectedOptions[0]
-      .text.match(/\((.*) บาท\)/)[1]
-  })
+  if (e1) {
+    alert(e1.message)
+    return
+  }
 
-  alert('✅ บันทึกการซื้อหุ้นแล้ว (รอชำระเงิน)')
+  // create detail
+  const { error: e2 } = await sb
+    .from('stock_order_details')
+    .insert({
+      order_id: order.order_id,
+      stock_id,
+      quantity: qty,
+      price_per_unit: price
+    })
+
+  if (e2) {
+    alert(e2.message)
+    return
+  }
+
+  alert("✅ บันทึกการซื้อหุ้นเรียบร้อย (รอชำระเงิน)")
 }
 </script>
 
